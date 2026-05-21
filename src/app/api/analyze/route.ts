@@ -19,12 +19,12 @@ const rateLimitStore = new Map<string, RateLimitEntry>()
 
 function validateInput(data: FormInput, agentType: AgentType): string | null {
   if (agentType === 'pnl') {
-    if (!data.pnlText?.trim() && !data.mainPain?.trim() && !data.company?.trim()) {
-      return 'Вставьте P&L-данные или заполните хотя бы контекст бизнеса.'
+    if (!data.pnlText?.trim() && !data.mainPain?.trim()) {
+      return 'Добавьте P&L-данные или опишите финансовую ситуацию.'
     }
   } else {
-    if (!data.mainPain?.trim() && !data.whatDoYouSell?.trim() && !data.company?.trim()) {
-      return 'Опишите бизнес: заполните хотя бы одно диагностическое поле или название компании.'
+    if (!data.mainPain?.trim() && !data.whatDoYouSell?.trim()) {
+      return 'Опишите бизнес: заполните описание ситуации.'
     }
   }
   return null
