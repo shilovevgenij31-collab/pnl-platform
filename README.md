@@ -1,36 +1,274 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Перезагрузка прибыльности — AI-платформа
 
-## Getting Started
+Платформа с двумя AI-агентами для диагностики прибыльности бизнеса.
 
-First, run the development server:
+**P&L Agent** — финансовый анализ: где бизнес теряет прибыль по цифрам.
+**Goldratt Agent** — системная диагностика: главное ограничение роста по Теории ограничений.
+
+### Загрузка данных
+
+Формы поддерживают два способа ввода данных:
+- **Загрузка файла** — drag & drop или выбор файла: `.txt`, `.csv`, `.md`, `.json`
+- **Вставка текстом** — скопировать из Excel / Google Sheets и вставить в textarea
+
+Excel и PDF пока через copy-paste. Парсинг `.xlsx` / `.pdf` — следующий этап.
+
+## Быстрый старт
 
 ```bash
+cd platform
+npm install
+cp .env.local.example .env.local  # заполните ключи
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Открыть: [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Переменные окружения
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Создайте `.env.local` в папке `platform/`:
 
-## Learn More
+```env
+# OpenRouter (обязательно)
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
 
-To learn more about Next.js, take a look at the following resources:
+# Supabase (обязательно для сохранения отчётов)
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...   # только сервер, никогда не на клиент
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Публичный URL
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+> `SUPABASE_SERVICE_ROLE_KEY` используется исключительно на сервере (`src/lib/supabase/server.ts`). Никогда не передаётся в браузер.
 
-## Deploy on Vercel
+## Supabase Setup
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 1. Создать проект на supabase.com
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 2. Выполнить SQL в редакторе Supabase (SQL Editor):
+
+```sql
+CREATE TABLE reports (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+
+  name TEXT,
+  email TEXT,
+  telegram TEXT,
+  company TEXT,
+
+  business_type TEXT,
+  industry TEXT,
+  geography TEXT,
+  team TEXT,
+  current_revenue TEXT,
+  current_margin TEXT,
+  target_margin TEXT,
+  main_pain TEXT,
+  tried_before TEXT,
+  extra_context TEXT,
+
+  pnl_text TEXT,
+  report TEXT NOT NULL,
+  agent_type TEXT DEFAULT 'pnl',
+  model_used TEXT,
+  status TEXT DEFAULT 'completed',
+  error_message TEXT
+);
+```
+
+### 3. Скопировать ключи из Settings → API
+
+- `NEXT_PUBLIC_SUPABASE_URL` — Project URL
+- `SUPABASE_SERVICE_ROLE_KEY` — service_role key (не anon key)
+
+## Два AI-агента
+
+| Агент | URL | Вопрос | Структура |
+|-------|-----|--------|-----------|
+| P&L Agent | `/analyze?agent=pnl` | Где бизнес теряет прибыль? | 14 разделов |
+| Goldratt Agent | `/analyze?agent=goldratt` | Что является главным ограничением? | 12 разделов |
+
+По умолчанию (без параметра) открывается P&L Agent.
+
+## Страницы
+
+| Путь | Описание |
+|------|----------|
+| `/` | Landing page с описанием обоих агентов |
+| `/analyze?agent=pnl` | Форма P&L Agent |
+| `/analyze?agent=goldratt` | Форма Goldratt Agent |
+| `/report/[id]` | Отчёт по уникальной ссылке (header/badge по agentType) |
+| `/report` | Fallback: отчёт из localStorage |
+| `/demo/pnl` | Demo P&L-отчёт (статика, без AI и Supabase) |
+| `/demo/goldratt` | Demo Goldratt-отчёт (статика, без AI и Supabase) |
+
+## Demo Mode
+
+Платформа поддерживает demo-режим для показа без доступа к AI-провайдеру.
+
+**Когда нужен:** free-модели OpenRouter недоступны или нестабильны (429/503), нужно показать платформу заказчику или провести демо.
+
+**Как работает:**
+- `/demo/pnl` — полноценный P&L-отчёт с вымышленной компанией «ТехКонсалт»
+- `/demo/goldratt` — полноценный Goldratt-отчёт с вымышленной компанией «РекрутПро»
+- Тот же `ReportDisplay` UI, те же цвета и структура, что в реальных отчётах
+- Синяя плашка «Демо-отчёт» вверху чётко разграничивает demo от реального
+
+**Точки входа:**
+- Landing page `/`: кнопка «Пример» рядом с каждой CTA-кнопкой агента
+- Форма `/analyze`: при ошибке AI — ссылка «Посмотреть пример отчёта»
+
+**Файл с demo-данными:** `src/lib/demoReports.ts`
+
+## Текущий flow
+
+```
+/ → выбор агента → /analyze?agent=pnl|goldratt
+  → POST /api/analyze  { ...formData, agentType }
+      ├── выбор system prompt по agentType
+      ├── AI генерирует отчёт (OpenRouter)
+      └── Supabase: сохранение с agent_type → { id }
+  → /report/[id]  (header/badge/цвет по agentType)
+```
+
+## agentType
+
+Поле `agentType: 'pnl' | 'goldratt'` передаётся через всю цепочку:
+- Форма → API body → system prompt selection → DB `agent_type` → отчёт
+- Старые отчёты без `agent_type` получают default `'pnl'`
+
+## Структура проекта
+
+```
+src/
+├── app/
+│   ├── page.tsx                    # Landing page (оба агента)
+│   ├── layout.tsx                  # Root layout (dark theme)
+│   ├── globals.css                 # Стили темы + markdown стили
+│   ├── analyze/
+│   │   ├── page.tsx                # Server Component: читает ?agent= param
+│   │   └── AnalyzeClient.tsx       # Client Component: агент-выбор + формы
+│   ├── report/
+│   │   ├── page.tsx                # Fallback (localStorage)
+│   │   └── [id]/
+│   │       ├── page.tsx            # Server Component: загружает отчёт из DB
+│   │       └── ReportDisplay.tsx   # Client Component: UI с агент-специфичным header
+│   └── api/analyze/route.ts        # API endpoint
+├── lib/
+│   ├── ai/
+│   │   ├── provider.ts             # Интерфейс AIProvider + AIResponse
+│   │   ├── openrouter.ts           # Реализация OpenRouter (возвращает modelUsed)
+│   │   ├── index.ts                # Фабрика createAIProvider()
+│   │   └── prompts/
+│   │       ├── pnlPrompt.ts        # System prompt для P&L Agent
+│   │       ├── goldrattPrompt.ts   # System prompt для Goldratt Agent
+│   │       └── buildUserPrompt.ts  # User prompt builders по agentType
+│   │   └── index.ts                # Фабрика createAIProvider()
+│   ├── supabase/
+│   │   └── server.ts               # Supabase server-only client
+│   ├── repositories/
+│   │   └── reportRepository.ts     # saveReportToDatabase / getReportById
+│   ├── storage/
+│   │   ├── formStorage.ts          # Черновик формы (localStorage)
+│   │   └── reportStorage.ts        # Отчёт из localStorage (fallback)
+│   ├── prompts.ts                  # System prompt
+│   └── types.ts                    # Все общие типы
+└── components/ui/                  # shadcn/ui компоненты
+```
+
+## AI Provider Layer
+
+Провайдер изолирован за интерфейсом `AIProvider`:
+
+```typescript
+export interface AIProvider {
+  chat(messages: AIMessage[]): Promise<string>
+}
+```
+
+### Как заменить OpenRouter на Claude
+
+1. Создайте `src/lib/ai/claude.ts` с классом `ClaudeProvider implements AIProvider`
+2. В `src/lib/ai/index.ts` замените `new OpenRouterProvider()` на `new ClaudeProvider()`
+3. Добавьте `ANTHROPIC_API_KEY` в `.env.local`
+
+## Стек
+
+- **Next.js 16** App Router + TypeScript
+- **Tailwind CSS v4** + shadcn/ui + lucide-react
+- **react-markdown** + remark-gfm
+- **OpenRouter** — прокси к бесплатным AI моделям
+- **Supabase** — PostgreSQL база данных для хранения отчётов
+
+## Обработка ошибок
+
+API всегда возвращает предсказуемую структуру:
+
+**Success:**
+```json
+{ "id": "uuid", "status": "success" }
+```
+
+**Error:**
+```json
+{ "error": "safe user-facing message", "code": "ERROR_CODE" }
+```
+
+**Коды ошибок:** `VALIDATION_ERROR` · `AI_ERROR` · `DB_SAVE_FAILED` · `NOT_CONFIGURED` · `INTERNAL_ERROR`
+
+**Особый случай — `DB_SAVE_FAILED`:** AI сгенерировал отчёт, но Supabase не сохранил.
+API возвращает:
+```json
+{ "error": "...", "code": "DB_SAVE_FAILED", "report": "...markdown...", "company": "..." }
+```
+Клиент сохраняет отчёт в localStorage и показывает жёлтое предупреждение с кнопкой «Открыть временный отчёт».
+
+## Безопасность
+
+- `SUPABASE_SERVICE_ROLE_KEY` — **только сервер**. Никогда не попадает в браузер.
+- Не используется Supabase клиент в Client Components.
+- Supabase client инициализируется только в `src/lib/supabase/server.ts`.
+
+## Известные предупреждения
+
+При запуске `npm run build` может появляться:
+```
+Warning: Next.js inferred your workspace root...
+Detected additional lockfiles: C:\Users\...\package-lock.json
+```
+Это безопасное предупреждение о нескольких `package-lock.json` в родительских папках. Не влияет на работу.
+
+## Деплой на Vercel
+
+```bash
+npx vercel --prod
+```
+
+Добавьте все переменные окружения в настройках Vercel проекта.
+
+## P1 hardening перед деплоем
+
+- `POST /api/analyze` имеет MVP in-memory rate limit: 5 запросов за 10 минут на IP (`x-forwarded-for`, `x-real-ip`, fallback `unknown`). Это защищает MVP от случайного перерасхода, но не является production-grade distributed limiter.
+- AI/OpenRouter ошибки нормализованы: клиент получает безопасные коды `NOT_CONFIGURED`, `AI_TIMEOUT`, `AI_RATE_LIMITED`, `AI_PROVIDER_ERROR`, `AI_EMPTY_RESPONSE`; raw upstream errors остаются только в server logs.
+- `model_used` сохраняется в Supabase и отображается на `/report/[id]`. Для старых отчётов без значения UI показывает `Model not recorded`, для demo — `Demo / OpenRouter`.
+- Route handler `/api/analyze` закреплён за Node.js runtime и задаёт `maxDuration = 180` для long-running AI requests на Vercel.
+- `next.config.ts` задаёт `turbopack.root` на папку `platform`, чтобы убрать warning про parent `package-lock.json`.
+
+### Vercel env
+
+Добавьте в Vercel:
+
+```env
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=...
+NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+### Production note
+
+AI-запросы могут быть долгими. Для production лучше заменить in-memory limiter на Redis/Upstash/Vercel KV, а генерацию отчётов вынести в queue/background jobs. Также проверьте, что выбранный тариф/настройка Vercel выдерживает long-running AI requests.

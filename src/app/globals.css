@@ -1,26 +1,272 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Light premium theme */
+:root {
+  --background: #F4F7FB;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #2563EB;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #0F172A;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #EFF6FF;
+  --accent-foreground: #1D4ED8;
+  --destructive: #EF4444;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #2563EB;
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ============================================
+   MARKDOWN REPORT STYLES — Light Theme
+   ============================================ */
+.markdown-report {
+  color: #374151;
+  line-height: 1.8;
+  font-size: 0.9375rem;
+}
+
+.markdown-report h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 1.75rem 0 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #E2E8F0;
+}
+
+.markdown-report h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1E3A8A;
+  margin: 1.75rem 0 0.625rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid #BFDBFE;
+}
+
+.markdown-report h3 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #0F172A;
+  margin: 1.25rem 0 0.5rem;
+  padding-left: 0.75rem;
+  border-left: 3px solid #2563EB;
+}
+
+.markdown-report p {
+  margin: 0.625rem 0;
+  color: #374151;
+}
+
+.markdown-report ul,
+.markdown-report ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.markdown-report li {
+  margin: 0.375rem 0;
+  color: #374151;
+}
+
+.markdown-report strong {
+  color: #0F172A;
+  font-weight: 600;
+}
+
+.markdown-report em {
+  color: #64748B;
+  font-style: italic;
+}
+
+.markdown-report hr {
+  border: none;
+  border-top: 1px solid #E2E8F0;
+  margin: 1.5rem 0;
+}
+
+.markdown-report table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.875rem;
+  overflow-x: auto;
+  display: block;
+  border-radius: 0.75rem;
+}
+
+.markdown-report table th {
+  background: #F8FAFC;
+  color: #374151;
+  font-weight: 600;
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+  border: 1px solid #E2E8F0;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+.markdown-report table td {
+  padding: 0.5rem 0.875rem;
+  border: 1px solid #E2E8F0;
+  vertical-align: top;
+  color: #374151;
+}
+
+.markdown-report table tr:nth-child(even) td {
+  background: #F8FAFC;
+}
+
+.markdown-report table tr:hover td {
+  background: #EFF6FF;
+  transition: background 0.15s;
+}
+
+.markdown-report code {
+  background: #F1F5F9;
+  color: #1E40AF;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.875em;
+}
+
+.markdown-report pre {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.markdown-report pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-report blockquote {
+  border-left: 4px solid #2563EB;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  color: #374151;
+  background: #EFF6FF;
+  border-radius: 0 10px 10px 0;
+}
+
+.report-table {
+  background: #ffffff;
+}
+
+.report-table table {
+  border-spacing: 0;
+}
+
+.report-table tbody tr:hover td {
+  background: #F8FAFC;
+}
+
+.report-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.report-table th:first-child,
+.report-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: inherit;
+}
+
+@media (max-width: 767px) {
+  .report-table th:first-child,
+  .report-table td:first-child {
+    position: static;
+  }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+  body {
+    background: white !important;
+    color: #1e293b !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .markdown-report {
+    color: #1e293b;
+  }
+
+  .markdown-report h2 {
+    color: #1E3A8A;
+    border-bottom-color: #BFDBFE;
+  }
+
+  .markdown-report h3 {
+    color: #0F172A;
+    border-left-color: #2563EB;
+  }
+
+  .markdown-report table th {
+    background: #F1F5F9;
+    color: #0F172A;
+    border-color: #E2E8F0;
+  }
+
+  .markdown-report table td {
+    border-color: #E2E8F0;
+  }
+
+  .markdown-report hr {
+    border-color: #E2E8F0;
+  }
 }

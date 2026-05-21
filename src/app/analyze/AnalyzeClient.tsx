@@ -1,0 +1,1186 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import {
+  ArrowLeft,
+  ArrowRight,
+  BarChart3,
+  Target,
+  Loader2,
+  AlertCircle,
+  RotateCcw,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Upload,
+  X,
+  CheckCircle2,
+} from 'lucide-react'
+import { saveFormDraft, getFormDraft, clearFormDraft } from '@/lib/storage/formStorage'
+import { saveReport } from '@/lib/storage/reportStorage'
+import type { AnalyzeFormFields, AgentType } from '@/lib/types'
+
+// ─── Design tokens ─────────────────────────────────────────────────────────────
+
+const PAGE_BG = '#F4F7FB'
+const CARD = '#FFFFFF'
+const BORDER = '#E2E8F0'
+const TEXT = '#0F172A'
+const TEXT2 = '#64748B'
+const INPUT_BG = '#FFFFFF'
+const INPUT_BORDER = '#E2E8F0'
+
+// ─── Empty forms ───────────────────────────────────────────────────────────────
+
+const BASE_EMPTY: Omit<AnalyzeFormFields, 'agentType'> = {
+  name: '',
+  email: '',
+  telegram: '',
+  company: '',
+  businessType: '',
+  industry: '',
+  geography: '',
+  team: '',
+  mainPain: '',
+  triedBefore: '',
+  extraContext: '',
+  currentRevenue: '',
+  currentMargin: '',
+  targetMargin: '',
+  pnlText: '',
+  whatDoYouSell: '',
+  whoIsCustomer: '',
+  revenueMechanics: '',
+  bottleneckGuess: '',
+  delaysQueues: '',
+  ownerDependency: '',
+  unfinishedProjects: '',
+  desiredResult: '',
+}
+
+const EMPTY_PNL: AnalyzeFormFields = { ...BASE_EMPTY, agentType: 'pnl' }
+const EMPTY_GOLDRATT: AnalyzeFormFields = { ...BASE_EMPTY, agentType: 'goldratt' }
+
+const SUPPORTED_EXTENSIONS = ['txt', 'csv', 'md', 'json']
+
+// ─── Loading steps ─────────────────────────────────────────────────────────────
+
+const PNL_STEPS = [
+  'Читаем финансовые данные...',
+  'Анализируем структуру расходов...',
+  'Рассчитываем ключевые метрики...',
+  'Определяем зоны потерь прибыли...',
+  'Ищем главный финансовый bottleneck...',
+  'Рассчитываем точку безубыточности...',
+  'Строим сценарии рентабельности...',
+  'Формируем рекомендации...',
+  'Составляем план на 7 / 14 / 30 дней...',
+  'Финализируем P&L-отчёт...',
+]
+
+const GOLDRATT_STEPS = [
+  'Читаем описание бизнеса...',
+  'Составляем карту бизнеса...',
+  'Анализируем Throughput / Inventory / OE...',
+  'Ищем симптомы системы...',
+  'Определяем главное ограничение...',
+  'Проверяем гипотезу ограничения...',
+  'Строим Five Focusing Steps...',
+  'Формируем план через линзу ограничения...',
+  'Финализируем Goldratt-отчёт...',
+]
+
+// ─── Agent config ──────────────────────────────────────────────────────────────
+
+const AGENT_CONFIG = {
+  pnl: {
+    badge: 'Financial Analysis',
+    title: 'P&L Agent',
+    subtitle: 'Финансовый разбор прибыльности',
+    cardDesc:
+      'Анализирует P&L, находит зоны потери прибыли, финансовые аномалии, точку безубыточности и сценарии роста рентабельности.',
+    cta: 'Сформировать P&L-отчёт',
+    loadingTitle: 'Анализируем P&L',
+    icon: BarChart3,
+    accent: '#059669',
+    accentLight: '#10b981',
+    accentBg: '#ECFDF5',
+    accentBorder: '#A7F3D0',
+    accentText: 'text-emerald-700',
+    badgeBg: '#F0FDF4',
+    badgeBorder: '#A7F3D0',
+    badgeText: '#065F46',
+    btnStyle: { background: 'linear-gradient(135deg, #059669, #0891b2)' },
+    activeBg: '#F0FDF4',
+    activeBorder: '#6EE7B7',
+  },
+  goldratt: {
+    badge: 'Goldratt / TOC',
+    title: 'Goldratt Agent',
+    subtitle: 'Поиск системного ограничения',
+    cardDesc:
+      'Определяет главное системное ограничение по Теории ограничений: где застревает поток, что является шумом и что делать первым.',
+    cta: 'Найти бутылочное горлышко',
+    loadingTitle: 'Ищем ограничение',
+    icon: Target,
+    accent: '#7c3aed',
+    accentLight: '#8b5cf6',
+    accentBg: '#F5F3FF',
+    accentBorder: '#DDD6FE',
+    accentText: 'text-violet-700',
+    badgeBg: '#F5F3FF',
+    badgeBorder: '#DDD6FE',
+    badgeText: '#5B21B6',
+    btnStyle: { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' },
+    activeBg: '#F5F3FF',
+    activeBorder: '#C4B5FD',
+  },
+} as const
+
+type AgentCfg = (typeof AGENT_CONFIG)[AgentType]
+
+// ─── Component ─────────────────────────────────────────────────────────────────
+
+export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentType }) {
+  const router = useRouter()
+  const [agent, setAgent] = useState<AgentType>(initialAgent)
+  const [pnlForm, setPnlForm] = useState<AnalyzeFormFields>(EMPTY_PNL)
+  const [goldrattForm, setGoldrattForm] = useState<AnalyzeFormFields>(EMPTY_GOLDRATT)
+  const [loading, setLoading] = useState(false)
+  const [stepIndex, setStepIndex] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [savedLocally, setSavedLocally] = useState(false)
+  const [hasPnlDraft, setHasPnlDraft] = useState(false)
+  const [hasGoldrattDraft, setHasGoldrattDraft] = useState(false)
+  const [pnlFileName, setPnlFileName] = useState<string | null>(null)
+  const [goldrattFileName, setGoldrattFileName] = useState<string | null>(null)
+
+  const cfg = AGENT_CONFIG[agent]
+  const form = agent === 'pnl' ? pnlForm : goldrattForm
+  const hasDraft = agent === 'pnl' ? hasPnlDraft : hasGoldrattDraft
+  const fileName = agent === 'pnl' ? pnlFileName : goldrattFileName
+
+  useEffect(() => {
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (cancelled) return
+
+      const pnlDraft = getFormDraft('pnl')
+      if (pnlDraft) {
+        setPnlForm({ ...EMPTY_PNL, ...pnlDraft, agentType: 'pnl' })
+        setHasPnlDraft(true)
+      }
+
+      const goldrattDraft = getFormDraft('goldratt')
+      if (goldrattDraft) {
+        setGoldrattForm({ ...EMPTY_GOLDRATT, ...goldrattDraft, agentType: 'goldratt' })
+        setHasGoldrattDraft(true)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  function switchAgent(next: AgentType) {
+    setAgent(next)
+    setError(null)
+    setSavedLocally(false)
+    router.replace(`/analyze?agent=${next}`, { scroll: false })
+  }
+
+  const setField = useCallback(
+    (key: keyof AnalyzeFormFields, value: string) => {
+      if (agent === 'pnl') {
+        setPnlForm((prev) => {
+          const next = { ...prev, [key]: value }
+          saveFormDraft('pnl', next)
+          setHasPnlDraft(true)
+          return next
+        })
+      } else {
+        setGoldrattForm((prev) => {
+          const next = { ...prev, [key]: value }
+          saveFormDraft('goldratt', next)
+          setHasGoldrattDraft(true)
+          return next
+        })
+      }
+    },
+    [agent],
+  )
+
+  function handleClearForm() {
+    if (agent === 'pnl') {
+      setPnlForm(EMPTY_PNL)
+      setHasPnlDraft(false)
+      setPnlFileName(null)
+      clearFormDraft('pnl')
+    } else {
+      setGoldrattForm(EMPTY_GOLDRATT)
+      setHasGoldrattDraft(false)
+      setGoldrattFileName(null)
+      clearFormDraft('goldratt')
+    }
+    setError(null)
+    setSavedLocally(false)
+  }
+
+  function handleFileLoaded(text: string, name: string) {
+    if (agent === 'pnl') {
+      setField('pnlText', text)
+      setPnlFileName(name)
+    } else {
+      setField('mainPain', text)
+      setGoldrattFileName(name)
+    }
+  }
+
+  function handleClearFile() {
+    if (agent === 'pnl') setPnlFileName(null)
+    else setGoldrattFileName(null)
+  }
+
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault()
+    setLoading(true)
+    setError(null)
+    setSavedLocally(false)
+    setStepIndex(0)
+
+    const steps = agent === 'pnl' ? PNL_STEPS : GOLDRATT_STEPS
+    let step = 0
+    const interval = setInterval(() => {
+      step = Math.min(step + 1, steps.length - 1)
+      setStepIndex(step)
+    }, 3500)
+
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok && data.code === 'DB_SAVE_FAILED' && data.report) {
+        saveReport({
+          report: data.report,
+          company: data.company || form.company || form.name || 'Ваш бизнес',
+          date: new Date().toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          }),
+          mode: agent === 'pnl' ? 'P&L Analysis' : 'Goldratt / TOC',
+        })
+        setSavedLocally(true)
+        setError(data.error)
+        return
+      }
+
+      if (!res.ok) throw new Error(data.error || 'Ошибка анализа')
+      router.push(`/report/${data.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Произошла ошибка. Попробуйте снова.')
+    } finally {
+      clearInterval(interval)
+      setLoading(false)
+    }
+  }
+
+  // ─── Loading screen ───────────────────────────────────────────────────────────
+
+  if (loading) {
+    const steps = agent === 'pnl' ? PNL_STEPS : GOLDRATT_STEPS
+    const Icon = cfg.icon
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center px-6"
+        style={{ background: PAGE_BG }}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl p-10 text-center"
+          style={{
+            background: CARD,
+            border: `1px solid ${BORDER}`,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+          }}
+        >
+          <div className="relative w-16 h-16 mx-auto mb-6">
+            <div
+              className="absolute inset-0 rounded-full border-4"
+              style={{ borderColor: `${cfg.accentBorder}` }}
+            />
+            <div
+              className="absolute inset-0 rounded-full border-4 border-transparent animate-spin"
+              style={{ borderTopColor: cfg.accent }}
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Icon className="w-7 h-7" style={{ color: cfg.accent }} />
+            </div>
+          </div>
+
+          <h2 className="text-xl font-bold mb-1" style={{ color: TEXT }}>
+            {cfg.loadingTitle}
+          </h2>
+          <p className="text-sm font-medium mb-6" style={{ color: cfg.accent }}>
+            {steps[stepIndex]}
+          </p>
+
+          <div className="space-y-2 text-left">
+            {steps.slice(0, stepIndex + 1).map((msg, i) => (
+              <div key={i} className="flex items-center gap-2.5">
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: i < stepIndex ? cfg.accentBg : '#EFF6FF' }}
+                >
+                  {i < stepIndex ? (
+                    <div className="w-2 h-2 rounded-full" style={{ background: cfg.accent }} />
+                  ) : (
+                    <Loader2
+                      className="w-3 h-3 animate-spin"
+                      style={{ color: cfg.accent }}
+                    />
+                  )}
+                </div>
+                <span
+                  className="text-xs"
+                  style={{ color: i < stepIndex ? '#CBD5E1' : TEXT2 }}
+                >
+                  {msg}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs mt-6" style={{ color: '#CBD5E1' }}>
+            Обычно занимает 1–2 минуты
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Shared styles ────────────────────────────────────────────────────────────
+
+  const inputCls =
+    'w-full rounded-xl px-3.5 py-2.5 text-sm focus:outline-none transition-colors'
+  const inputStyle: React.CSSProperties = {
+    background: INPUT_BG,
+    border: `1px solid ${INPUT_BORDER}`,
+    color: TEXT,
+  }
+  const focusStyle: React.CSSProperties = { borderColor: cfg.accentLight, boxShadow: `0 0 0 3px ${cfg.accentBg}` }
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="min-h-screen" style={{ background: PAGE_BG }}>
+      {/* Navbar */}
+      <nav
+        className="sticky top-0 z-50"
+        style={{
+          background: CARD,
+          borderBottom: `1px solid ${BORDER}`,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        }}
+      >
+        <div className="max-w-3xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-sm transition-colors hover:text-blue-600"
+            style={{ color: TEXT2 }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Назад
+          </Link>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ background: cfg.accentBg }}
+            >
+              <cfg.icon className="w-3.5 h-3.5" style={{ color: cfg.accent }} />
+            </div>
+            <span className="text-sm font-semibold" style={{ color: TEXT }}>
+              {cfg.title}
+            </span>
+          </div>
+          <div className="w-16" />
+        </div>
+      </nav>
+
+      <div className="max-w-5xl mx-auto px-6 py-10">
+        {/* Agent selector — full width */}
+        <div className="mb-8">
+          <p className="text-sm mb-3 text-center" style={{ color: TEXT2 }}>
+            Выберите AI-агента
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <AgentCard
+              agentKey="pnl"
+              active={agent === 'pnl'}
+              onClick={() => switchAgent('pnl')}
+              hasDraft={hasPnlDraft}
+            />
+            <AgentCard
+              agentKey="goldratt"
+              active={agent === 'goldratt'}
+              onClick={() => switchAgent('goldratt')}
+              hasDraft={hasGoldrattDraft}
+            />
+          </div>
+        </div>
+
+        {/* 2-column layout: form (left) + info sidebar (right) */}
+        <div className="lg:grid lg:grid-cols-[1fr_272px] lg:gap-8 lg:items-start">
+          {/* Left: form */}
+          <div>
+            {/* Form header */}
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                    style={{
+                      background: cfg.badgeBg,
+                      color: cfg.badgeText,
+                      border: `1px solid ${cfg.badgeBorder}`,
+                    }}
+                  >
+                    {cfg.badge}
+                  </span>
+                </div>
+                <h1 className="text-2xl font-bold mb-1.5" style={{ color: TEXT }}>
+                  {cfg.subtitle}
+                </h1>
+                <p className="text-sm" style={{ color: TEXT2 }}>
+                  {cfg.cardDesc}
+                </p>
+              </div>
+              {hasDraft && (
+                <button
+                  type="button"
+                  onClick={handleClearForm}
+                  className="flex items-center gap-1.5 text-xs transition-colors hover:text-red-600 flex-shrink-0 mt-1"
+                  style={{ color: TEXT2 }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Очистить форму
+                </button>
+              )}
+            </div>
+
+            {/* Error banner */}
+            {error && (
+              <div
+                className="flex items-start gap-3 rounded-2xl p-4 mb-6"
+                style={{
+                  background: savedLocally ? '#FFFBEB' : '#FEF2F2',
+                  border: savedLocally ? '1px solid #FDE68A' : '1px solid #FECACA',
+                }}
+              >
+                <AlertCircle
+                  className="w-5 h-5 flex-shrink-0 mt-0.5"
+                  style={{ color: savedLocally ? '#D97706' : '#EF4444' }}
+                />
+                <div className="flex-1">
+                  <p className="text-sm" style={{ color: savedLocally ? '#92400E' : '#991B1B' }}>
+                    {error}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    {savedLocally && (
+                      <Link
+                        href="/report"
+                        className="text-xs font-semibold"
+                        style={{ color: '#D97706' }}
+                      >
+                        Открыть временный отчёт →
+                      </Link>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleSubmit()}
+                      className="flex items-center gap-1.5 text-xs font-semibold"
+                      style={{ color: savedLocally ? '#D97706' : '#DC2626' }}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Попробовать ещё раз
+                    </button>
+                    <Link
+                      href={agent === 'pnl' ? '/demo/pnl' : '/demo/goldratt'}
+                      className="text-xs font-medium transition-colors hover:text-blue-600"
+                      style={{ color: TEXT2 }}
+                    >
+                      Посмотреть пример отчёта →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Form card */}
+            <div
+              className="rounded-2xl p-6 mb-5"
+              style={{
+                background: CARD,
+                border: `1px solid ${BORDER}`,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+              }}
+            >
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {agent === 'pnl' ? (
+                  <PnlSection
+                    form={form}
+                    setField={setField}
+                    inputCls={inputCls}
+                    inputStyle={inputStyle}
+                    focusStyle={focusStyle}
+                    cfg={cfg}
+                    fileName={fileName}
+                    onFileLoaded={handleFileLoaded}
+                    onClearFile={handleClearFile}
+                  />
+                ) : (
+                  <GoldrattSection
+                    form={form}
+                    setField={setField}
+                    inputCls={inputCls}
+                    inputStyle={inputStyle}
+                    focusStyle={focusStyle}
+                    cfg={cfg}
+                    fileName={fileName}
+                    onFileLoaded={handleFileLoaded}
+                    onClearFile={handleClearFile}
+                  />
+                )}
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full flex items-center justify-center gap-2 text-white px-8 py-4 rounded-xl text-base font-semibold transition-all hover:opacity-90 shadow-lg"
+                    style={{
+                      ...cfg.btnStyle,
+                      boxShadow: `0 8px 24px ${cfg.accent}30`,
+                    }}
+                  >
+                    <ArrowRight className="w-5 h-5" />
+                    {cfg.cta}
+                  </button>
+                  <p className="text-center text-xs mt-3" style={{ color: '#CBD5E1' }}>
+                    Анализ занимает 1–2 минуты
+                  </p>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          {/* Right: info sidebar — desktop only */}
+          <div className="hidden lg:block">
+            <WhatYouGetCard cfg={cfg} agent={agent} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── What you get sidebar ─────────────────────────────────────────────────────
+
+const PNL_REPORT_SECTIONS = [
+  'Диагностика входных данных',
+  'Executive Summary',
+  'Ключевые метрики + формулы',
+  'Анализ расходов по статьям',
+  'Зоны потерь прибыли',
+  'Аномалии и странности',
+  'Главный финансовый bottleneck',
+  'Точка безубыточности',
+  'Сценарии рентабельности',
+  'Что НЕ оптимизировать',
+  'Рекомендации с эффектом',
+  'План на 7 / 14 / 30 дней',
+  'Главный диагноз',
+  'Ограничения анализа',
+]
+
+const GOLDRATT_REPORT_SECTIONS = [
+  'Диагностика входных данных',
+  'Executive Summary',
+  'Карта бизнеса и Throughput',
+  'T / I / OE анализ',
+  'Симптомы системы',
+  'Главное системное ограничение',
+  'Что является шумом',
+  'Five Focusing Steps',
+  'Что НЕ оптимизировать',
+  'Рекомендации',
+  'План действий',
+  'Главный диагноз',
+  'Ограничения анализа',
+]
+
+function WhatYouGetCard({ cfg, agent }: { cfg: AgentCfg; agent: AgentType }) {
+  const items = agent === 'pnl' ? PNL_REPORT_SECTIONS : GOLDRATT_REPORT_SECTIONS
+  const Icon = cfg.icon
+
+  return (
+    <div className="sticky top-24 space-y-4">
+      <div
+        className="rounded-2xl p-5"
+        style={{
+          background: CARD,
+          border: `1px solid ${BORDER}`,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+        }}
+      >
+        <div className="flex items-center gap-2.5 mb-4">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: cfg.accentBg }}
+          >
+            <Icon className="w-4 h-4" style={{ color: cfg.accent }} />
+          </div>
+          <p className="text-sm font-semibold" style={{ color: TEXT }}>
+            Что будет в отчёте
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-2.5">
+              <span
+                className="text-xs font-semibold tabular-nums w-5 text-right flex-shrink-0"
+                style={{ color: '#CBD5E1' }}
+              >
+                {String(idx + 1).padStart(2, '0')}
+              </span>
+              <CheckCircle2
+                className="w-3.5 h-3.5 flex-shrink-0"
+                style={{ color: cfg.accentLight }}
+              />
+              <span className="text-xs leading-snug" style={{ color: TEXT2 }}>
+                {item}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className="rounded-2xl px-4 py-3.5"
+        style={{ background: cfg.accentBg, border: `1px solid ${cfg.accentBorder}` }}
+      >
+        <p className="text-xs leading-relaxed" style={{ color: cfg.badgeText }}>
+          AI анализирует данные за <strong>1–2 минуты</strong> и формирует структурированный
+          консалтинговый отчёт
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Agent selector card ───────────────────────────────────────────────────────
+
+function AgentCard({
+  agentKey,
+  active,
+  onClick,
+  hasDraft,
+}: {
+  agentKey: AgentType
+  active: boolean
+  onClick: () => void
+  hasDraft: boolean
+}) {
+  const cfg = AGENT_CONFIG[agentKey]
+  const Icon = cfg.icon
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left rounded-xl p-4 transition-all w-full"
+      style={{
+        background: active ? cfg.activeBg : CARD,
+        border: active ? `1.5px solid ${cfg.activeBorder}` : `1.5px solid ${BORDER}`,
+        boxShadow: active ? `0 4px 12px ${cfg.accent}15` : '0 1px 3px rgba(0,0,0,0.04)',
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+          style={{ background: active ? cfg.accentBg : '#F8FAFC' }}
+        >
+          <Icon
+            className="w-4.5 h-4.5"
+            style={{ width: 18, height: 18, color: active ? cfg.accent : '#94A3B8' }}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-semibold" style={{ color: active ? TEXT : TEXT2 }}>
+              {cfg.title}
+            </span>
+            {hasDraft && (
+              <span
+                className="text-xs px-1.5 py-0.5 rounded"
+                style={{ background: '#FFFBEB', color: '#D97706' }}
+              >
+                черновик
+              </span>
+            )}
+          </div>
+          <p className="text-xs leading-snug" style={{ color: active ? cfg.accent : '#94A3B8' }}>
+            {cfg.subtitle}
+          </p>
+        </div>
+        {active && (
+          <div
+            className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
+            style={{ background: cfg.accent }}
+          />
+        )}
+      </div>
+    </button>
+  )
+}
+
+// ─── File upload zone ─────────────────────────────────────────────────────────
+
+function FileUploadZone({
+  onFileLoaded,
+  fileName,
+  onClearFile,
+  accent,
+  accentBg,
+  accentBorder,
+  hint,
+}: {
+  onFileLoaded: (text: string, name: string) => void
+  fileName: string | null
+  onClearFile: () => void
+  accent: string
+  accentBg: string
+  accentBorder: string
+  hint: string
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  function processFile(file: File) {
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+    if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+      setFileError(
+        'Поддерживаются .txt, .csv, .md, .json. Для Excel/PDF скопируйте данные и вставьте текстом.',
+      )
+      return
+    }
+    setFileError(null)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) ?? ''
+      onFileLoaded(text, file.name)
+    }
+    reader.readAsText(file, 'UTF-8')
+  }
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) processFile(file)
+    e.target.value = ''
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) processFile(file)
+  }
+
+  if (fileName) {
+    return (
+      <div
+        className="flex items-center gap-3 rounded-xl px-4 py-3"
+        style={{ background: accentBg, border: `1px solid ${accentBorder}` }}
+      >
+        <FileText className="w-4 h-4 flex-shrink-0" style={{ color: accent }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate" style={{ color: TEXT }}>
+            {fileName}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: accent }}>
+            Файл загружен и добавлен в анализ
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            onClearFile()
+            setFileError(null)
+          }}
+          className="transition-colors hover:text-red-500 flex-shrink-0"
+          style={{ color: '#94A3B8' }}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        className="w-full rounded-xl px-5 py-5 flex items-center gap-4 transition-all text-left"
+        style={{
+          background: dragging ? accentBg : '#FAFBFC',
+          border: `2px dashed ${dragging ? accent : '#CBD5E1'}`,
+        }}
+      >
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: dragging ? accentBg : '#F1F5F9' }}
+        >
+          <Upload className="w-5 h-5" style={{ color: dragging ? accent : '#94A3B8' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium" style={{ color: TEXT2 }}>
+            Загрузить файл{' '}
+            <span className="text-xs" style={{ color: '#CBD5E1' }}>
+              · .txt .csv .md .json
+            </span>
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: '#CBD5E1' }}>
+            {hint}
+          </p>
+        </div>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".txt,.csv,.md,.json"
+        onChange={handleInputChange}
+        className="hidden"
+      />
+      {fileError && (
+        <p className="text-xs text-amber-600 mt-2 flex items-start gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          {fileError}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Collapsible section ──────────────────────────────────────────────────────
+
+function CollapsibleSection({
+  title,
+  accent,
+  accentBg,
+  children,
+}: {
+  title: string
+  accent: string
+  accentBg: string
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: `1px solid ${BORDER}` }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-5 py-3.5 text-left transition-colors"
+        style={{ background: open ? accentBg : '#FAFBFC' }}
+      >
+        <span
+          className="text-sm font-medium"
+          style={{ color: open ? accent : TEXT2 }}
+        >
+          {title}
+        </span>
+        {open ? (
+          <ChevronUp className="w-4 h-4" style={{ color: TEXT2 }} />
+        ) : (
+          <ChevronDown className="w-4 h-4" style={{ color: TEXT2 }} />
+        )}
+      </button>
+      {open && (
+        <div className="px-5 pb-5 pt-4 space-y-4" style={{ borderTop: `1px solid ${BORDER}` }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Shared section props ─────────────────────────────────────────────────────
+
+type SectionProps = {
+  form: AnalyzeFormFields
+  setField: (key: keyof AnalyzeFormFields, value: string) => void
+  inputCls: string
+  inputStyle: React.CSSProperties
+  focusStyle: React.CSSProperties
+  cfg: AgentCfg
+  fileName: string | null
+  onFileLoaded: (text: string, name: string) => void
+  onClearFile: () => void
+}
+
+// ─── P&L form section ─────────────────────────────────────────────────────────
+
+function PnlSection({
+  form, setField, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile,
+}: SectionProps) {
+  return (
+    <>
+      <FileUploadZone
+        onFileLoaded={onFileLoaded}
+        fileName={fileName}
+        onClearFile={onClearFile}
+        accent={cfg.accent}
+        accentBg={cfg.accentBg}
+        accentBorder={cfg.accentBorder}
+        hint="Excel/PDF: скопируйте данные и вставьте текстом ниже"
+      />
+
+      <TextArea
+        label="P&L / Финансовые данные"
+        value={form.pnlText}
+        onChange={(v) => setField('pnlText', v)}
+        placeholder={`Выручка: 5 000 000 руб/месяц\nРасходы:\n  — ФОТ: 2 500 000 руб\n  — Аренда: 300 000 руб\n  — Маркетинг: 400 000 руб\n  — Прочее: 200 000 руб\nПрибыль: 1 000 000 руб\n\nИли вставьте таблицу из Excel / Google Sheets...`}
+        rows={10}
+        mono
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+      />
+
+      <TextArea
+        label="Опишите бизнес и проблему"
+        value={form.mainPain}
+        onChange={(v) => setField('mainPain', v)}
+        placeholder="Кратко: тип бизнеса, что происходит с прибылью, что беспокоит больше всего..."
+        rows={4}
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+      />
+
+      <Field
+        label="Целевая рентабельность"
+        value={form.targetMargin}
+        onChange={(v) => setField('targetMargin', v)}
+        placeholder="15% или «хочу 2 млн руб прибыли в месяц»"
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+        focusStyle={focusStyle}
+      />
+
+      <CollapsibleSection title="Дополнительный контекст" accent={cfg.accent} accentBg={cfg.accentBg}>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Имя" value={form.name} onChange={(v) => setField('name', v)} placeholder="Иван Иванов" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Email" type="email" value={form.email} onChange={(v) => setField('email', v)} placeholder="ivan@company.ru" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Telegram" value={form.telegram} onChange={(v) => setField('telegram', v)} placeholder="@username" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Компания" value={form.company} onChange={(v) => setField('company', v)} placeholder="ООО «Ромашка»" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Ниша / отрасль" value={form.industry} onChange={(v) => setField('industry', v)} placeholder="Бухгалтерские услуги" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="География" value={form.geography} onChange={(v) => setField('geography', v)} placeholder="Москва, Россия" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Команда" value={form.team} onChange={(v) => setField('team', v)} placeholder="12 человек" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Текущая выручка" value={form.currentRevenue} onChange={(v) => setField('currentRevenue', v)} placeholder="5 млн руб/месяц" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Текущая рентабельность" value={form.currentMargin} onChange={(v) => setField('currentMargin', v)} placeholder="5% или «не знаю»" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+        </div>
+        <div>
+          <label className="block text-sm mb-1.5" style={{ color: TEXT2 }}>Тип бизнеса</label>
+          <select value={form.businessType} onChange={(e) => setField('businessType', e.target.value)} className={inputCls} style={inputStyle}>
+            <option value="">Выберите тип</option>
+            <option>Услуги</option>
+            <option>Продукт / SaaS</option>
+            <option>Торговля</option>
+            <option>Производство</option>
+            <option>Онлайн / e-commerce</option>
+            <option>Другое</option>
+          </select>
+        </div>
+        <TextArea label="Что уже пробовали для роста прибыли" value={form.triedBefore} onChange={(v) => setField('triedBefore', v)} placeholder="Повышали цены, сокращали штат, меняли маркетинг..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Дополнительный контекст" value={form.extraContext} onChange={(v) => setField('extraContext', v)} placeholder="Любая информация, которая поможет AI лучше понять бизнес..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+      </CollapsibleSection>
+    </>
+  )
+}
+
+// ─── Goldratt form section ────────────────────────────────────────────────────
+
+function GoldrattSection({
+  form, setField, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile,
+}: SectionProps) {
+  return (
+    <>
+      <FileUploadZone
+        onFileLoaded={onFileLoaded}
+        fileName={fileName}
+        onClearFile={onClearFile}
+        accent={cfg.accent}
+        accentBg={cfg.accentBg}
+        accentBorder={cfg.accentBorder}
+        hint="Описание бизнеса, заметки, транскрипт или любые записи о ситуации"
+      />
+
+      <TextArea
+        label="Опишите бизнес и текущую ситуацию"
+        value={form.mainPain}
+        onChange={(v) => setField('mainPain', v)}
+        placeholder="Тип бизнеса, что продаёте, кому, как зарабатываете. Что сейчас больше всего мешает росту..."
+        rows={6}
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+      />
+
+      <TextArea
+        label="Где, по вашему ощущению, сейчас узкое место?"
+        value={form.bottleneckGuess}
+        onChange={(v) => setField('bottleneckGuess', v)}
+        placeholder="Кажется, что проблема в продажах. Или нет системы. Или собственник не успевает..."
+        rows={4}
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+      />
+
+      <TextArea
+        label="Где возникают задержки, очереди или перегрузка?"
+        value={form.delaysQueues}
+        onChange={(v) => setField('delaysQueues', v)}
+        placeholder="Клиенты ждут ответа по 3–5 дней. Задачи копятся у одного человека..."
+        rows={4}
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+      />
+
+      <CollapsibleSection title="Дополнительный контекст" accent={cfg.accent} accentBg={cfg.accentBg}>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Имя" value={form.name} onChange={(v) => setField('name', v)} placeholder="Иван Иванов" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Email" type="email" value={form.email} onChange={(v) => setField('email', v)} placeholder="ivan@company.ru" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Telegram" value={form.telegram} onChange={(v) => setField('telegram', v)} placeholder="@username" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Компания" value={form.company} onChange={(v) => setField('company', v)} placeholder="ООО «Ромашка»" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Ниша / отрасль" value={form.industry} onChange={(v) => setField('industry', v)} placeholder="Консалтинг" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="География" value={form.geography} onChange={(v) => setField('geography', v)} placeholder="Москва, Россия" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+          <Field label="Команда" value={form.team} onChange={(v) => setField('team', v)} placeholder="12 человек" inputCls={inputCls} inputStyle={inputStyle} focusStyle={focusStyle} />
+        </div>
+        <div>
+          <label className="block text-sm mb-1.5" style={{ color: TEXT2 }}>Тип бизнеса</label>
+          <select value={form.businessType} onChange={(e) => setField('businessType', e.target.value)} className={inputCls} style={inputStyle}>
+            <option value="">Выберите тип</option>
+            <option>Услуги</option>
+            <option>Продукт / SaaS</option>
+            <option>Торговля</option>
+            <option>Производство</option>
+            <option>Онлайн / e-commerce</option>
+            <option>Другое</option>
+          </select>
+        </div>
+        <TextArea label="Что продаёт / производит компания" value={form.whatDoYouSell} onChange={(v) => setField('whatDoYouSell', v)} placeholder="Консалтинг по подбору персонала для IT-компаний..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Кто основной клиент" value={form.whoIsCustomer} onChange={(v) => setField('whoIsCustomer', v)} placeholder="CTO или HR-директор компании от 50 сотрудников..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Как бизнес зарабатывает деньги" value={form.revenueMechanics} onChange={(v) => setField('revenueMechanics', v)} placeholder="Фиксированная оплата за проект + success fee..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Какие процессы зависят от собственника" value={form.ownerDependency} onChange={(v) => setField('ownerDependency', v)} placeholder="Все финансовые решения, финальное слово по каждому клиенту..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Незавершённые проекты / подвисшие инициативы" value={form.unfinishedProjects} onChange={(v) => setField('unfinishedProjects', v)} placeholder="6 месяцев разрабатываем новый продукт. 3 пилота подвисли..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Что уже пробовали исправить" value={form.triedBefore} onChange={(v) => setField('triedBefore', v)} placeholder="Наняли ещё одного менеджера, ввели CRM, написали регламенты..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Желаемый результат через 30–90 дней" value={form.desiredResult} onChange={(v) => setField('desiredResult', v)} placeholder="Хочу, чтобы бизнес работал без моего ежедневного участия..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+        <TextArea label="Дополнительный контекст" value={form.extraContext} onChange={(v) => setField('extraContext', v)} placeholder="Любая информация, которая поможет AI лучше понять бизнес..." rows={3} inputCls={inputCls} inputStyle={inputStyle} />
+      </CollapsibleSection>
+    </>
+  )
+}
+
+// ─── Reusable form components ──────────────────────────────────────────────────
+
+function Field({
+  label,
+  type = 'text',
+  value,
+  onChange,
+  placeholder,
+  inputCls,
+  inputStyle,
+  focusStyle,
+}: {
+  label: string
+  type?: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  inputCls: string
+  inputStyle: React.CSSProperties
+  focusStyle: React.CSSProperties
+}) {
+  return (
+    <div>
+      <label className="block text-sm mb-1.5" style={{ color: TEXT2 }}>
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={inputCls}
+        style={inputStyle}
+        onFocus={(e) => Object.assign(e.target.style, { ...inputStyle, ...focusStyle })}
+        onBlur={(e) => Object.assign(e.target.style, inputStyle)}
+      />
+    </div>
+  )
+}
+
+function TextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 4,
+  mono,
+  inputCls,
+  inputStyle,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  rows?: number
+  mono?: boolean
+  inputCls: string
+  inputStyle: React.CSSProperties
+}) {
+  return (
+    <div>
+      <label className="block text-sm mb-1.5" style={{ color: TEXT2 }}>
+        {label}
+      </label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        className={`${inputCls} resize-y ${mono ? 'font-mono text-xs' : ''}`}
+        style={inputStyle}
+      />
+    </div>
+  )
+}
