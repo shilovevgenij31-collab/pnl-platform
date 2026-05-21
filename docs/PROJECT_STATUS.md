@@ -16,6 +16,9 @@
 ### UX форм и загрузка файлов
 - Формы: 5 полей каждый агент, без скрытых секций и коллапса
 - Тип бизнеса «Другое» показывает дополнительное обязательное поле «Укажите тип бизнеса или нишу» (хранится в `industry`)
+- P&L Agent поддерживает 3 способа передать данные: Excel upload, Google Sheets ссылка, ручная вставка
+- Google Sheets import: server-side route `/api/import/google-sheet` скачивает XLSX через Google export API, клиент обрабатывает через тот же Excel ingestion pipeline (sheet selector, preview, quality gate)
+- Требует доступ «Anyone with the link → Viewer». Приватные таблицы без OAuth не поддерживаются
 - File upload: drag & drop или клик, поддерживаемые форматы — `.txt`, `.csv`, `.md`, `.json`
 - Файл читается через `FileReader` как текст, вставляется в соответствующее поле формы:
   - P&L Agent → в `pnlText`

@@ -96,7 +96,6 @@ const GOLDRATT_TEST_FILL: Partial<AnalyzeFormFields> = {
 const EXCEL_EXTS = ['xlsx', 'xls']
 const TEXT_EXTS = ['txt', 'csv', 'md', 'json']
 const ALL_SUPPORTED_EXTS = [...EXCEL_EXTS, ...TEXT_EXTS]
-const GOOGLE_SHEETS_TEMPLATE_URL = ''
 const TEMPLATE_URL = '/templates/pnl-template.xlsx'
 const MAX_NORMALIZED_CHARS = 75_000
 const PREVIEW_ROWS = 20
@@ -374,6 +373,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
   const [pnlFileName, setPnlFileName] = useState<string | null>(null)
   const [goldrattFileName, setGoldrattFileName] = useState<string | null>(null)
   const [pnlSheetStatus, setPnlSheetStatus] = useState<SheetQualityStatus | null>(null)
+  const [pnlFileSource, setPnlFileSource] = useState<'file' | 'google_sheets' | null>(null)
 
   const cfg = AGENT_CONFIG[agent]
   const form = agent === 'pnl' ? pnlForm : goldrattForm
@@ -457,6 +457,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
       setHasPnlDraft(false)
       setPnlFileName(null)
       setPnlSheetStatus(null)
+      setPnlFileSource(null)
       clearFormDraft('pnl')
     } else {
       setGoldrattForm(EMPTY_GOLDRATT)
@@ -484,6 +485,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
       fillForm(metadata)
       setPnlFileName(name)
       setPnlSheetStatus(analysis?.status ?? null)
+      setPnlFileSource('file')
     } else {
       setField('mainPain', text)
       setGoldrattFileName(name)
@@ -494,6 +496,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
     if (agent === 'pnl') {
       setPnlFileName(null)
       setPnlSheetStatus(null)
+      setPnlFileSource(null)
       fillForm({
         pnlText: '',
         sourceFileName: '',
@@ -505,6 +508,28 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
       })
     }
     else setGoldrattFileName(null)
+  }
+
+  function handleGoogleSheetsLoaded(text: string, name: string, analysis: SheetAnalysis) {
+    const metadata: Partial<AnalyzeFormFields> = {
+      pnlText: text,
+      sourceFileName: name,
+      selectedSheet: analysis.sheetName,
+      parsedRows: String(analysis.nonEmptyRows),
+      parsedColumns: String(analysis.nonEmptyColumns),
+      qualityScore: String(analysis.qualityScore),
+      qualityWarnings: [...analysis.hardBlockReasons, ...analysis.warnings].join(' | '),
+    }
+    setPnlForm((prev) => {
+      const next = { ...prev, ...metadata }
+      saveFormDraft('pnl', next)
+      setHasPnlDraft(true)
+      return next
+    })
+    setPnlFileName(name)
+    setPnlSheetStatus(analysis.status)
+    setPnlFileSource('google_sheets')
+    setError(null)
   }
 
   async function handleSubmit(e?: React.FormEvent) {
@@ -860,8 +885,10 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
                     focusStyle={focusStyle}
                     cfg={cfg}
                     fileName={fileName}
+                    fileSource={pnlFileSource}
                     onFileLoaded={handleFileLoaded}
                     onClearFile={handleClearFile}
+                    onGoogleSheetsLoaded={handleGoogleSheetsLoaded}
                     onFillTest={() => fillForm(PNL_TEST_FILL)}
                   />
                 ) : (
@@ -1394,8 +1421,10 @@ type SectionProps = {
   focusStyle: React.CSSProperties
   cfg: AgentCfg
   fileName: string | null
+  fileSource?: 'file' | 'google_sheets' | null
   onFileLoaded: (text: string, name: string, analysis?: SheetAnalysis) => void
   onClearFile: () => void
+  onGoogleSheetsLoaded?: (text: string, name: string, analysis: SheetAnalysis) => void
   onFillTest: () => void
 }
 
@@ -1499,10 +1528,255 @@ function BottleneckPills({
   )
 }
 
+// ─── Google Sheets import ─────────────────────────────────────────────────────
+
+function GoogleSheetsImport({
+  onLoaded,
+  onClear,
+  active,
+  accent,
+  accentBg,
+  accentBorder,
+}: {
+  onLoaded: (text: string, name: string, analysis: SheetAnalysis) => void
+  onClear: () => void
+  active: boolean
+  accent: string
+  accentBg: string
+  accentBorder: string
+}) {
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [sheetAnalyses, setSheetAnalyses] = useState<SheetAnalysis[]>([])
+  const [selectedSheet, setSelectedSheet] = useState('')
+  const [loadedFilename, setLoadedFilename] = useState('')
+
+  const currentAnalysis = sheetAnalyses.find((s) => s.sheetName === selectedSheet)
+
+  async function handleImport() {
+    const trimmed = url.trim()
+    if (!trimmed) return
+    setLoading(true)
+    setImportError(null)
+
+    try {
+      const res = await fetch('/api/import/google-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: trimmed }),
+      })
+      const data = await res.json() as {
+        filename?: string
+        bufferBase64?: string
+        spreadsheetId?: string
+        gid?: string | null
+        error?: string
+      }
+
+      if (!res.ok) {
+        setImportError(data.error ?? 'Не удалось загрузить Google Sheets. Попробуйте скачать таблицу как Excel и загрузить файл вручную.')
+        return
+      }
+      if (!data.bufferBase64 || !data.filename) {
+        setImportError('Не удалось получить данные от сервера. Попробуйте ещё раз.')
+        return
+      }
+
+      const binary = atob(data.bufferBase64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+      const XLSX = await import('xlsx')
+      const workbook = XLSX.read(bytes.buffer, { type: 'array' })
+
+      const shortId = data.spreadsheetId ? `${data.spreadsheetId.slice(0, 8)}…` : ''
+      const displayName = shortId ? `Google Sheets (${shortId})` : 'Google Sheets'
+
+      const analyses = workbook.SheetNames.map((sheetName) => {
+        const worksheet = workbook.Sheets[sheetName]
+        const rows = XLSX.utils.sheet_to_json<CellValue[]>(worksheet, {
+          header: 1, defval: '', blankrows: false, raw: false,
+        })
+        const a = analyzeSheet(sheetName, rows, displayName)
+        const patchedText = a.normalizedText.replace(
+          `Источник: Excel-файл ${displayName}`,
+          `Источник: Google Sheets\nSpreadsheet ID: ${shortId}`,
+        )
+        return { ...a, normalizedText: patchedText }
+      }).sort((a, b) => b.qualityScore - a.qualityScore)
+
+      if (analyses.length === 0) {
+        setImportError('Не удалось найти листы в таблице. Скачайте файл как Excel и загрузите вручную.')
+        return
+      }
+
+      const best = analyses[0]
+      setSheetAnalyses(analyses)
+      setSelectedSheet(best.sheetName)
+      setLoadedFilename(data.filename)
+      onLoaded(best.normalizedText, data.filename, best)
+    } catch {
+      setImportError('Не удалось загрузить Google Sheets. Попробуйте скачать таблицу как Excel и загрузить файл вручную.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleSheetChange(sheetName: string) {
+    const next = sheetAnalyses.find((s) => s.sheetName === sheetName)
+    if (!next) return
+    setSelectedSheet(sheetName)
+    onLoaded(next.normalizedText, loadedFilename, next)
+  }
+
+  function handleClear() {
+    setUrl('')
+    setSheetAnalyses([])
+    setSelectedSheet('')
+    setLoadedFilename('')
+    setImportError(null)
+    onClear()
+  }
+
+  if (active && currentAnalysis) {
+    return (
+      <div className="space-y-3">
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{ background: accentBg, border: `1px solid ${accentBorder}` }}
+        >
+          <FileText className="w-4 h-4 flex-shrink-0" style={{ color: accent }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate" style={{ color: TEXT }}>
+              {loadedFilename}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: accent }}>
+              Google Sheets загружена и добавлена в анализ
+            </p>
+          </div>
+          <button type="button" onClick={handleClear} className="transition-colors hover:text-red-500 flex-shrink-0" style={{ color: '#94A3B8' }} aria-label="Убрать">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4" style={{ borderColor: BORDER }}>
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: TEXT }}>Проверьте данные перед анализом</p>
+              <p className="mt-1 text-xs" style={{ color: TEXT2 }}>В анализ будет отправлена очищенная таблица.</p>
+            </div>
+            <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{
+              background: currentAnalysis.status === 'good' ? '#DCFCE7' : currentAnalysis.status === 'warning' ? '#FEF3C7' : '#FEE2E2',
+              color: currentAnalysis.status === 'good' ? '#166534' : currentAnalysis.status === 'warning' ? '#92400E' : '#991B1B',
+            }}>
+              {qualityStatusLabel(currentAnalysis.status)}
+            </span>
+          </div>
+
+          {sheetAnalyses.length > 1 && (
+            <label className="mb-3 block text-xs font-medium" style={{ color: TEXT2 }}>
+              Выберите лист для анализа
+              <select value={selectedSheet} onChange={(e) => handleSheetChange(e.target.value)} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm" style={{ borderColor: BORDER, color: TEXT }}>
+                {sheetAnalyses.map((sheet) => (
+                  <option key={sheet.sheetName} value={sheet.sheetName}>
+                    {sheet.sheetName} · {sheet.qualityScore}/100 · {qualityStatusLabel(sheet.status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {([['Лист', currentAnalysis.sheetName], ['Score', `${currentAnalysis.qualityScore}/100`], ['Строки', String(currentAnalysis.nonEmptyRows)], ['Колонки', String(currentAnalysis.nonEmptyColumns)]] as [string, string][]).map(([label, value]) => (
+              <div key={label} className="rounded-xl border px-3 py-2" style={{ borderColor: '#EEF2F7', background: '#F8FAFC' }}>
+                <p className="text-[0.68rem] uppercase tracking-wide" style={{ color: '#94A3B8' }}>{label}</p>
+                <p className="mt-1 truncate text-sm font-semibold" style={{ color: TEXT }}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {[...currentAnalysis.hardBlockReasons, ...currentAnalysis.warnings].length > 0 && (
+            <div className="mb-3 rounded-xl border px-3 py-2" style={{ borderColor: currentAnalysis.status === 'blocked' ? '#FECACA' : '#FDE68A', background: currentAnalysis.status === 'blocked' ? '#FEF2F2' : '#FFFBEB' }}>
+              <p className="mb-1 text-xs font-semibold" style={{ color: currentAnalysis.status === 'blocked' ? '#991B1B' : '#92400E' }}>Предупреждения</p>
+              <ul className="space-y-1 text-xs" style={{ color: currentAnalysis.status === 'blocked' ? '#991B1B' : '#92400E' }}>
+                {[...currentAnalysis.hardBlockReasons, ...currentAnalysis.warnings].map((w) => <li key={w}>• {w}</li>)}
+              </ul>
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: BORDER }}>
+            <table className="min-w-full border-collapse text-xs">
+              <tbody>
+                {currentAnalysis.previewRows.map((row, ri) => (
+                  <tr key={ri} className={ri === 0 ? 'bg-slate-50 font-semibold' : undefined}>
+                    {row.map((cell, ci) => (
+                      <td key={`${ri}-${ci}`} className="max-w-[180px] truncate border-b border-r px-2.5 py-2" style={{ borderColor: '#EEF2F7', color: TEXT }}>{cell || '—'}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3">
+            <button type="button" onClick={handleClear} className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
+              Загрузить файл вместо этого
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border p-4" style={{ borderColor: BORDER, background: '#FAFBFC' }}>
+      <p className="text-sm font-medium mb-2.5" style={{ color: TEXT }}>
+        Вставьте ссылку на Google Sheets
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => { setUrl(e.target.value); setImportError(null) }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleImport() } }}
+          placeholder="https://docs.google.com/spreadsheets/d/..."
+          className="flex-1 rounded-lg px-3 py-2 text-sm min-w-0"
+          style={{ border: `1px solid ${BORDER}`, color: TEXT, background: '#fff' }}
+          disabled={loading}
+        />
+        <button
+          type="button"
+          onClick={() => void handleImport()}
+          disabled={loading || !url.trim()}
+          className="rounded-lg px-3 py-2 text-sm font-medium text-white whitespace-nowrap flex-shrink-0"
+          style={{ background: loading || !url.trim() ? '#94A3B8' : accent, cursor: loading || !url.trim() ? 'default' : 'pointer' }}
+        >
+          {loading ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Загружаем…
+            </span>
+          ) : 'Загрузить'}
+        </button>
+      </div>
+      <p className="text-xs mt-2" style={{ color: '#94A3B8' }}>
+        Откройте доступ: File → Share → Anyone with the link → Viewer. Приватные таблицы не читаются.
+      </p>
+      {importError && (
+        <p className="text-xs mt-2 flex items-start gap-1.5" style={{ color: '#DC2626' }}>
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          {importError}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ─── P&L form section ─────────────────────────────────────────────────────────
 
 function PnlSection({
-  form, setField, fillForm, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile, onFillTest,
+  form, setField, fillForm, inputCls, inputStyle, focusStyle, cfg, fileName, fileSource, onFileLoaded, onClearFile, onGoogleSheetsLoaded, onFillTest,
 }: SectionProps) {
   return (
     <>
@@ -1587,61 +1861,69 @@ function PnlSection({
         inputStyle={inputStyle}
       />
 
-      {/* 5. Financial data — upload + paste */}
-      <div>
-        <label className="block text-sm mb-2" style={{ color: TEXT2 }}>
-          P&L / финансовые данные *
-        </label>
-        <div className="mb-3 flex flex-wrap gap-2">
+      {/* 5. Financial data — upload / google sheets / paste */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="text-sm" style={{ color: TEXT2 }}>
+            P&L / финансовые данные *
+          </label>
           <a
             href={TEMPLATE_URL}
             download
-            className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50"
-            style={{ borderColor: cfg.accentBorder, color: cfg.accent }}
+            className="inline-flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-70"
+            style={{ color: cfg.accent }}
           >
-            <FileText className="h-3.5 w-3.5" />
+            <FileText className="h-3 w-3" />
             Скачать шаблон P&L
           </a>
-          {GOOGLE_SHEETS_TEMPLATE_URL ? (
-            <a
-              href={GOOGLE_SHEETS_TEMPLATE_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50"
-              style={{ borderColor: cfg.accentBorder, color: cfg.accent }}
-            >
-              Открыть шаблон в Google Sheets
-            </a>
-          ) : (
-            <span
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium"
-              style={{ borderColor: BORDER, color: '#94A3B8', background: '#F8FAFC' }}
-            >
-              Google Sheets — скоро
-            </span>
-          )}
         </div>
+
+        {/* A: Excel upload */}
         <FileUploadZone
           variant="pnl"
           onFileLoaded={onFileLoaded}
-          fileName={fileName}
+          fileName={fileSource === 'file' ? fileName : null}
           onClearFile={onClearFile}
           accent={cfg.accent}
           accentBg={cfg.accentBg}
           accentBorder={cfg.accentBorder}
         />
-        <div className="mt-2">
-          <TextArea
-            label=""
-            value={form.pnlText}
-            onChange={(v) => setField('pnlText', v)}
-            placeholder={`Выручка: 5 000 000 руб/месяц\nРасходы:\n  — ФОТ: 2 500 000 руб\n  — Аренда: 300 000 руб\n  — Маркетинг: 400 000 руб\n  — Прочее: 200 000 руб\nПрибыль: 1 000 000 руб\n\nИли вставьте таблицу из Excel / Google Sheets...`}
-            rows={8}
-            mono
-            inputCls={inputCls}
-            inputStyle={inputStyle}
-          />
+
+        {/* Divider */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: BORDER }} />
+          <span className="text-xs" style={{ color: '#94A3B8' }}>или</span>
+          <div className="flex-1 h-px" style={{ background: BORDER }} />
         </div>
+
+        {/* B: Google Sheets link import */}
+        <GoogleSheetsImport
+          onLoaded={onGoogleSheetsLoaded ?? (() => {})}
+          onClear={onClearFile}
+          active={fileSource === 'google_sheets'}
+          accent={cfg.accent}
+          accentBg={cfg.accentBg}
+          accentBorder={cfg.accentBorder}
+        />
+
+        {/* Divider */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: BORDER }} />
+          <span className="text-xs" style={{ color: '#94A3B8' }}>или вставьте таблицу вручную</span>
+          <div className="flex-1 h-px" style={{ background: BORDER }} />
+        </div>
+
+        {/* C: Manual paste */}
+        <TextArea
+          label=""
+          value={form.pnlText}
+          onChange={(v) => setField('pnlText', v)}
+          placeholder={`Выручка: 5 000 000 руб/месяц\nРасходы:\n  — ФОТ: 2 500 000 руб\n  — Аренда: 300 000 руб\n  — Маркетинг: 400 000 руб\n  — Прочее: 200 000 руб\nПрибыль: 1 000 000 руб\n\nИли вставьте таблицу из Excel / Google Sheets...`}
+          rows={8}
+          mono
+          inputCls={inputCls}
+          inputStyle={inputStyle}
+        />
       </div>
     </>
   )

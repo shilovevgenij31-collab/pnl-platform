@@ -11,7 +11,12 @@
 - **Загрузка файла** — drag & drop или выбор файла: `.txt`, `.csv`, `.md`, `.json`
 - **Вставка текстом** — скопировать из Excel / Google Sheets и вставить в textarea
 
-P&L Agent поддерживает `.xlsx` / `.xls`: после загрузки Excel показывает список листов, автоматически выбирает лучший лист по quality score, показывает preview и блокирует запуск AI, если лист не похож на заполненный P&L. PDF parser пока не реализован.
+P&L Agent поддерживает три способа передать данные:
+- **Excel upload** (`.xlsx` / `.xls`): sheet selector, auto-score, preview, quality gate.
+- **Google Sheets link**: вставьте ссылку на таблицу с доступом «Anyone with the link → Viewer». Платформа скачает XLSX на сервере и обработает через тот же Excel pipeline: sheet selector, preview, quality gate. Приватные таблицы без OAuth не поддерживаются — скачайте как `.xlsx` и загрузите файл вручную.
+- **Ручная вставка**: скопируйте таблицу из Excel / Google Sheets и вставьте в текстовое поле.
+
+PDF parser пока не реализован.
 
 ### Excel ingestion и шаблон P&L
 
