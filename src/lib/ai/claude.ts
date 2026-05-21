@@ -1,13 +1,14 @@
-import { AIProviderError } from './provider'
+import { AIProviderError, isLikelyTimeoutError } from './provider'
 import type { AIProvider, AIMessage, AIResponse } from './provider'
 
-const API_KEY = process.env.ANTHROPIC_API_KEY
-const MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest'
 const BASE_URL = 'https://api.anthropic.com/v1'
 
 export class ClaudeProvider implements AIProvider {
   async chat(messages: AIMessage[]): Promise<AIResponse> {
-    if (!API_KEY) {
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    const model = process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest'
+    if (!apiKey) {
+      console.error('[AI] provider=claude missing ANTHROPIC_API_KEY')
       throw new AIProviderError('NOT_CONFIGURED', 'ANTHROPIC_API_KEY is not configured')
     }
 
@@ -20,12 +21,12 @@ export class ClaudeProvider implements AIProvider {
       response = await fetch(`${BASE_URL}/messages`, {
         method: 'POST',
         headers: {
-          'x-api-key': API_KEY,
+          'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: MODEL,
+          model,
           max_tokens: 4000,
           temperature: 0.3,
           ...(systemMessage ? { system: systemMessage.content } : {}),
@@ -37,7 +38,7 @@ export class ClaudeProvider implements AIProvider {
         signal: AbortSignal.timeout(120_000),
       })
     } catch (error) {
-      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      if (isLikelyTimeoutError(error)) {
         throw new AIProviderError('AI_TIMEOUT', 'Claude request timed out')
       }
       throw new AIProviderError(
@@ -74,7 +75,7 @@ export class ClaudeProvider implements AIProvider {
 
     return {
       content: text,
-      modelUsed: data.model ?? MODEL,
+      modelUsed: data.model ?? model,
     }
   }
 }

@@ -2,15 +2,30 @@ import { OpenRouterProvider } from './openrouter'
 import { ClaudeProvider } from './claude'
 import type { AIProvider } from './provider'
 
-export function createAIProvider(): AIProvider {
+export function getAIProviderConfig() {
   const provider = process.env.AI_PROVIDER || 'openrouter'
 
   if (provider === 'claude') {
-    return new ClaudeProvider()
+    return {
+      provider: 'claude',
+      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-latest',
+    } as const
   }
 
   if (provider !== 'openrouter') {
     console.warn(`[AI] Unknown AI_PROVIDER "${provider}", falling back to OpenRouter`)
+  }
+
+  return {
+    provider: 'openrouter',
+    model: process.env.OPENROUTER_MODEL || 'google/gemma-4-31b-it:free',
+  } as const
+}
+
+export function createAIProvider(): AIProvider {
+  const config = getAIProviderConfig()
+  if (config.provider === 'claude') {
+    return new ClaudeProvider()
   }
 
   return new OpenRouterProvider()

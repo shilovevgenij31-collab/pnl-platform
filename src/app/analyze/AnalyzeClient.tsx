@@ -96,6 +96,176 @@ const GOLDRATT_TEST_FILL: Partial<AnalyzeFormFields> = {
 const EXCEL_EXTS = ['xlsx', 'xls']
 const TEXT_EXTS = ['txt', 'csv', 'md', 'json']
 const ALL_SUPPORTED_EXTS = [...EXCEL_EXTS, ...TEXT_EXTS]
+const GOOGLE_SHEETS_TEMPLATE_URL = ''
+const TEMPLATE_URL = '/templates/pnl-template.xlsx'
+const MAX_NORMALIZED_CHARS = 75_000
+const PREVIEW_ROWS = 20
+const PREVIEW_COLS = 15
+
+const REVENUE_KEYWORDS = ['выручка', 'доход', 'продажи', 'оборот', 'агентское вознаграждение']
+const EXPENSE_KEYWORDS = ['расходы', 'себестоимость', 'фот', 'зарплата', 'маркетинг', 'аренда', 'подрядчики']
+const PROFIT_KEYWORDS = ['прибыль', 'маржа', 'рентабельность']
+const FORMULA_ERRORS = ['#VALUE!', '#DIV/0!', '#REF!', '#N/A', '#NAME?']
+const PERIOD_KEYWORDS = [
+  'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+  'янв', 'фев', 'мар', 'апр', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+  'month', 'месяц', 'итого',
+]
+
+type CellValue = string | number | boolean | Date | null | undefined
+
+type SheetQualityStatus = 'good' | 'warning' | 'blocked'
+
+type SheetAnalysis = {
+  sheetName: string
+  rows: string[][]
+  previewRows: string[][]
+  nonEmptyRows: number
+  nonEmptyColumns: number
+  numericValuesCount: number
+  nonZeroNumericValuesCount: number
+  formulaErrorsCount: number
+  detectedKeywords: string[]
+  qualityScore: number
+  warnings: string[]
+  hardBlockReasons: string[]
+  status: SheetQualityStatus
+  normalizedText: string
+  truncated: boolean
+}
+
+function cellToText(value: CellValue): string {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  return String(value).replace(/\s+/g, ' ').trim()
+}
+
+function parseNumber(value: string): number | null {
+  const normalized = value
+    .replace(/\s/g, '')
+    .replace(/[₽$€%]/g, '')
+    .replace(',', '.')
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) return null
+  const number = Number(normalized)
+  return Number.isFinite(number) ? number : null
+}
+
+function normalizeRows(rawRows: CellValue[][]): string[][] {
+  const rows = rawRows
+    .map((row) => row.map(cellToText))
+    .filter((row) => row.some((cell) => cell.length > 0))
+
+  const usedColumns = new Set<number>()
+  rows.forEach((row) => {
+    row.forEach((cell, index) => {
+      if (cell.length > 0) usedColumns.add(index)
+    })
+  })
+
+  const columns = [...usedColumns].sort((a, b) => a - b)
+  return rows.map((row) => columns.map((index) => row[index] ?? ''))
+}
+
+function csvEscape(value: string): string {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+function rowsToCsv(rows: string[][]): string {
+  return rows.map((row) => row.map(csvEscape).join(',')).join('\n')
+}
+
+function keywordHits(text: string, keywords: string[]): string[] {
+  const lower = text.toLowerCase()
+  return keywords.filter((keyword) => lower.includes(keyword))
+}
+
+function analyzeSheet(sheetName: string, rawRows: CellValue[][], fileName: string): SheetAnalysis {
+  const rows = normalizeRows(rawRows)
+  const flat = rows.flat()
+  const text = flat.join(' ').toLowerCase()
+  const numericValues = flat.map(parseNumber).filter((value): value is number => value !== null)
+  const formulaErrorsCount = flat.filter((cell) => FORMULA_ERRORS.some((error) => cell.toUpperCase().includes(error))).length
+  const revenueHits = keywordHits(text, REVENUE_KEYWORDS)
+  const expenseHits = keywordHits(text, EXPENSE_KEYWORDS)
+  const profitHits = keywordHits(text, PROFIT_KEYWORDS)
+  const periodHits = keywordHits(text, PERIOD_KEYWORDS)
+  const detectedKeywords = [...new Set([...revenueHits, ...expenseHits, ...profitHits, ...periodHits])]
+  const nonEmptyRows = rows.length
+  const nonEmptyColumns = rows.reduce((max, row) => Math.max(max, row.filter(Boolean).length), 0)
+  const nonZeroNumericValuesCount = numericValues.filter((value) => value !== 0).length
+
+  const warnings: string[] = []
+  const hardBlockReasons: string[] = []
+  const serviceSheet = /инструкц|readme|описан|guide|help/i.test(sheetName)
+
+  if (serviceSheet) hardBlockReasons.push('Это служебный лист шаблона, а не данные бизнеса.')
+  if (nonEmptyRows === 0) hardBlockReasons.push('Лист пустой.')
+  if (nonEmptyRows > 0 && nonEmptyRows < 3) hardBlockReasons.push('Слишком мало содержательных строк.')
+  if (numericValues.length < 5) hardBlockReasons.push('Слишком мало числовых значений.')
+  if (numericValues.length >= 5 && nonZeroNumericValuesCount === 0) hardBlockReasons.push('Все числовые значения равны нулю.')
+  if (revenueHits.length === 0 || expenseHits.length === 0) hardBlockReasons.push('Не найдены одновременно выручка и расходы.')
+  if (formulaErrorsCount > Math.max(3, Math.ceil(flat.length * 0.08))) hardBlockReasons.push('Слишком много ошибок формул.')
+  if (nonZeroNumericValuesCount < 3 && revenueHits.length > 0 && expenseHits.length > 0) hardBlockReasons.push('Лист похож на незаполненный шаблон.')
+
+  if (profitHits.length === 0) warnings.push('Не найдены прибыль, маржа или рентабельность.')
+  if (periodHits.length <= 1) warnings.push('Найден один период или периоды не распознаны.')
+  if (formulaErrorsCount > 0) warnings.push(`Найдены ошибки формул: ${formulaErrorsCount}.`)
+
+  let score = 0
+  if (revenueHits.length > 0) score += 25
+  if (expenseHits.length > 0) score += 25
+  if (profitHits.length > 0) score += 15
+  if (nonZeroNumericValuesCount >= 5) score += 15
+  if (periodHits.length > 1) score += 10
+  if (nonEmptyRows >= 6 && nonEmptyColumns >= 3) score += 10
+  score -= Math.min(30, formulaErrorsCount * 5)
+  if (hardBlockReasons.length > 0) score = Math.min(score, 39)
+  score = Math.max(0, Math.min(100, score))
+
+  const normalizedCsv = rowsToCsv(rows)
+  const normalizedTooLarge = normalizedCsv.length > MAX_NORMALIZED_CHARS
+  const truncatedCsv = normalizedTooLarge ? normalizedCsv.slice(0, MAX_NORMALIZED_CHARS) : normalizedCsv
+  if (normalizedTooLarge) warnings.push('Таблица была обрезана до безопасного размера для анализа.')
+
+  const status: SheetQualityStatus = hardBlockReasons.length > 0 ? 'blocked' : warnings.length > 0 ? 'warning' : 'good'
+  const allWarnings = [...hardBlockReasons, ...warnings]
+  const metadata = [
+    `Источник: Excel-файл ${fileName}`,
+    `Лист: ${sheetName}`,
+    `Строк: ${nonEmptyRows}`,
+    `Колонок: ${nonEmptyColumns}`,
+    `Quality score: ${score}`,
+    `Предупреждения: ${allWarnings.length ? allWarnings.join(' | ') : 'нет'}`,
+    '',
+    '=== Очищенная таблица для анализа ===',
+  ].join('\n')
+
+  return {
+    sheetName,
+    rows,
+    previewRows: rows.slice(0, PREVIEW_ROWS).map((row) => row.slice(0, PREVIEW_COLS)),
+    nonEmptyRows,
+    nonEmptyColumns,
+    numericValuesCount: numericValues.length,
+    nonZeroNumericValuesCount,
+    formulaErrorsCount,
+    detectedKeywords,
+    qualityScore: score,
+    warnings,
+    hardBlockReasons,
+    status,
+    normalizedText: `${metadata}\n${truncatedCsv}`,
+    truncated: normalizedTooLarge,
+  }
+}
+
+function qualityStatusLabel(status: SheetQualityStatus): string {
+  if (status === 'good') return 'Данные подходят для анализа'
+  if (status === 'warning') return 'Нужна проверка'
+  return 'Файл не подходит для анализа'
+}
 
 // ─── Margin & bottleneck options ───────────────────────────────────────────────
 
@@ -203,6 +373,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
   const [hasGoldrattDraft, setHasGoldrattDraft] = useState(false)
   const [pnlFileName, setPnlFileName] = useState<string | null>(null)
   const [goldrattFileName, setGoldrattFileName] = useState<string | null>(null)
+  const [pnlSheetStatus, setPnlSheetStatus] = useState<SheetQualityStatus | null>(null)
 
   const cfg = AGENT_CONFIG[agent]
   const form = agent === 'pnl' ? pnlForm : goldrattForm
@@ -285,6 +456,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
       setPnlForm(EMPTY_PNL)
       setHasPnlDraft(false)
       setPnlFileName(null)
+      setPnlSheetStatus(null)
       clearFormDraft('pnl')
     } else {
       setGoldrattForm(EMPTY_GOLDRATT)
@@ -296,10 +468,22 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
     setSavedLocally(false)
   }
 
-  function handleFileLoaded(text: string, name: string) {
+  function handleFileLoaded(text: string, name: string, analysis?: SheetAnalysis) {
     if (agent === 'pnl') {
-      setField('pnlText', text)
+      const metadata: Partial<AnalyzeFormFields> = analysis
+        ? {
+            pnlText: text,
+            sourceFileName: name,
+            selectedSheet: analysis.sheetName,
+            parsedRows: String(analysis.nonEmptyRows),
+            parsedColumns: String(analysis.nonEmptyColumns),
+            qualityScore: String(analysis.qualityScore),
+            qualityWarnings: [...analysis.hardBlockReasons, ...analysis.warnings].join(' | '),
+          }
+        : { pnlText: text, sourceFileName: name }
+      fillForm(metadata)
       setPnlFileName(name)
+      setPnlSheetStatus(analysis?.status ?? null)
     } else {
       setField('mainPain', text)
       setGoldrattFileName(name)
@@ -307,7 +491,19 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
   }
 
   function handleClearFile() {
-    if (agent === 'pnl') setPnlFileName(null)
+    if (agent === 'pnl') {
+      setPnlFileName(null)
+      setPnlSheetStatus(null)
+      fillForm({
+        pnlText: '',
+        sourceFileName: '',
+        selectedSheet: '',
+        parsedRows: '',
+        parsedColumns: '',
+        qualityScore: '',
+        qualityWarnings: '',
+      })
+    }
     else setGoldrattFileName(null)
   }
 
@@ -317,12 +513,18 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
     if (agent === 'pnl') {
       if (!form.company?.trim()) { setError('Укажите название компании или проекта.'); return }
       if (!form.businessType?.trim()) { setError('Выберите тип бизнеса.'); return }
+      if (form.businessType === 'Другое' && !form.industry?.trim()) { setError('Укажите тип бизнеса или нишу.'); return }
       if (!form.targetMargin?.trim()) { setError('Укажите целевую рентабельность.'); return }
       if (!form.mainPain?.trim()) { setError('Опишите главную боль бизнеса.'); return }
       if (!form.pnlText?.trim()) { setError('Добавьте P&L-данные: загрузите файл или вставьте данные текстом.'); return }
+      if (pnlSheetStatus === 'blocked') {
+        setError('Файл не подходит для анализа: выбранный лист не похож на заполненный P&L. Выберите другой лист, загрузите заполненный файл, скачайте шаблон или вставьте таблицу вручную.')
+        return
+      }
     } else {
       if (!form.company?.trim()) { setError('Укажите название компании или проекта.'); return }
       if (!form.businessType?.trim()) { setError('Выберите тип бизнеса.'); return }
+      if (form.businessType === 'Другое' && !form.industry?.trim()) { setError('Укажите тип бизнеса или нишу.'); return }
       if (!form.whatDoYouSell?.trim()) { setError('Опишите, что продаёт или производит компания.'); return }
       if (!form.bottleneckGuess?.trim()) { setError('Выберите, где, по ощущению, узкое место.'); return }
       if (!form.mainPain?.trim()) { setError('Опишите ситуацию в бизнесе.'); return }
@@ -578,6 +780,34 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
                     {error}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-3">
+                    {error.includes('Файл не подходит') && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setError(null)}
+                          className="text-xs font-semibold"
+                          style={{ color: '#DC2626' }}
+                        >
+                          Выбрать другой лист
+                        </button>
+                        <a
+                          href={TEMPLATE_URL}
+                          download
+                          className="text-xs font-semibold"
+                          style={{ color: '#DC2626' }}
+                        >
+                          Скачать шаблон
+                        </a>
+                        <button
+                          type="button"
+                          onClick={handleClearFile}
+                          className="text-xs font-semibold"
+                          style={{ color: '#DC2626' }}
+                        >
+                          Вставить вручную
+                        </button>
+                      </>
+                    )}
                     {savedLocally && (
                       <Link
                         href="/report"
@@ -587,15 +817,17 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
                         Открыть временный отчёт →
                       </Link>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => handleSubmit()}
-                      className="flex items-center gap-1.5 text-xs font-semibold"
-                      style={{ color: savedLocally ? '#D97706' : '#DC2626' }}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Попробовать ещё раз
-                    </button>
+                    {!error.includes('Файл не подходит') && (
+                      <button
+                        type="button"
+                        onClick={() => handleSubmit()}
+                        className="flex items-center gap-1.5 text-xs font-semibold"
+                        style={{ color: savedLocally ? '#D97706' : '#DC2626' }}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Попробовать ещё раз
+                      </button>
+                    )}
                     <Link
                       href={agent === 'pnl' ? '/demo/pnl' : '/demo/goldratt'}
                       className="text-xs font-medium transition-colors hover:text-blue-600"
@@ -622,6 +854,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
                   <PnlSection
                     form={form}
                     setField={setField}
+                    fillForm={fillForm}
                     inputCls={inputCls}
                     inputStyle={inputStyle}
                     focusStyle={focusStyle}
@@ -635,6 +868,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
                   <GoldrattSection
                     form={form}
                     setField={setField}
+                    fillForm={fillForm}
                     inputCls={inputCls}
                     inputStyle={inputStyle}
                     focusStyle={focusStyle}
@@ -848,7 +1082,7 @@ function FileUploadZone({
   accentBorder,
   variant,
 }: {
-  onFileLoaded: (text: string, name: string) => void
+  onFileLoaded: (text: string, name: string, analysis?: SheetAnalysis) => void
   fileName: string | null
   onClearFile: () => void
   accent: string
@@ -860,6 +1094,8 @@ function FileUploadZone({
   const [fileError, setFileError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [reading, setReading] = useState(false)
+  const [sheetAnalyses, setSheetAnalyses] = useState<SheetAnalysis[]>([])
+  const [selectedSheet, setSelectedSheet] = useState('')
 
   const title =
     variant === 'pnl' ? 'Загрузите P&L или таблицу' : 'Загрузите описание бизнеса'
@@ -880,16 +1116,34 @@ function FileUploadZone({
     }
     setFileError(null)
     setReading(true)
+    setSheetAnalyses([])
+    setSelectedSheet('')
 
     try {
       if (EXCEL_EXTS.includes(ext)) {
         const XLSX = await import('xlsx')
         const buffer = await file.arrayBuffer()
         const workbook = XLSX.read(buffer, { type: 'array' })
-        const firstSheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[firstSheetName]
-        const csv = XLSX.utils.sheet_to_csv(worksheet)
-        onFileLoaded(`Источник: Excel-файл, лист: ${firstSheetName}\n\n${csv}`, file.name)
+        const analyses = workbook.SheetNames.map((sheetName) => {
+          const worksheet = workbook.Sheets[sheetName]
+          const rows = XLSX.utils.sheet_to_json<CellValue[]>(worksheet, {
+            header: 1,
+            defval: '',
+            blankrows: false,
+            raw: false,
+          })
+          return analyzeSheet(sheetName, rows, file.name)
+        }).sort((a, b) => b.qualityScore - a.qualityScore)
+
+        const best = analyses[0]
+        if (!best) {
+          setFileError('Не удалось найти листы в Excel-файле. Скачайте шаблон или вставьте данные вручную.')
+          return
+        }
+
+        setSheetAnalyses(analyses)
+        setSelectedSheet(best.sheetName)
+        onFileLoaded(best.normalizedText, file.name, best)
       } else {
         await new Promise<void>((resolve, reject) => {
           const reader = new FileReader()
@@ -921,29 +1175,151 @@ function FileUploadZone({
     if (file) processFile(file)
   }
 
+  function handleSheetChange(sheetName: string) {
+    const next = sheetAnalyses.find((item) => item.sheetName === sheetName)
+    if (!next) return
+    setSelectedSheet(sheetName)
+    onFileLoaded(next.normalizedText, fileName ?? 'Excel-файл', next)
+  }
+
+  const currentAnalysis = sheetAnalyses.find((item) => item.sheetName === selectedSheet)
+
   if (fileName) {
     return (
-      <div
-        className="flex items-center gap-3 rounded-xl px-4 py-3"
-        style={{ background: accentBg, border: `1px solid ${accentBorder}` }}
-      >
-        <FileText className="w-4 h-4 flex-shrink-0" style={{ color: accent }} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate" style={{ color: TEXT }}>
-            {fileName}
-          </p>
-          <p className="text-xs mt-0.5" style={{ color: accent }}>
-            Файл загружен и добавлен в анализ
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => { onClearFile(); setFileError(null) }}
-          className="transition-colors hover:text-red-500 flex-shrink-0"
-          style={{ color: '#94A3B8' }}
+      <div className="space-y-3">
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{ background: accentBg, border: `1px solid ${accentBorder}` }}
         >
-          <X className="w-4 h-4" />
-        </button>
+          <FileText className="w-4 h-4 flex-shrink-0" style={{ color: accent }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate" style={{ color: TEXT }}>
+              {fileName}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: accent }}>
+              Файл загружен и добавлен в анализ
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onClearFile()
+              setFileError(null)
+              setSheetAnalyses([])
+              setSelectedSheet('')
+            }}
+            className="transition-colors hover:text-red-500 flex-shrink-0"
+            style={{ color: '#94A3B8' }}
+            aria-label="Убрать файл"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {currentAnalysis && (
+          <div className="rounded-2xl border bg-white p-4" style={{ borderColor: BORDER }}>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold" style={{ color: TEXT }}>
+                  Проверьте данные перед анализом
+                </p>
+                <p className="mt-1 text-xs" style={{ color: TEXT2 }}>
+                  В анализ будет отправлена очищенная таблица.
+                </p>
+              </div>
+              <span
+                className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                style={{
+                  background: currentAnalysis.status === 'good' ? '#DCFCE7' : currentAnalysis.status === 'warning' ? '#FEF3C7' : '#FEE2E2',
+                  color: currentAnalysis.status === 'good' ? '#166534' : currentAnalysis.status === 'warning' ? '#92400E' : '#991B1B',
+                }}
+              >
+                {qualityStatusLabel(currentAnalysis.status)}
+              </span>
+            </div>
+
+            {sheetAnalyses.length > 1 && (
+              <label className="mb-3 block text-xs font-medium" style={{ color: TEXT2 }}>
+                Выберите лист для анализа
+                <select
+                  value={selectedSheet}
+                  onChange={(e) => handleSheetChange(e.target.value)}
+                  className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                  style={{ borderColor: BORDER, color: TEXT }}
+                >
+                  {sheetAnalyses.map((sheet) => (
+                    <option key={sheet.sheetName} value={sheet.sheetName}>
+                      {sheet.sheetName} · {sheet.qualityScore}/100 · {qualityStatusLabel(sheet.status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                ['Лист', currentAnalysis.sheetName],
+                ['Score', `${currentAnalysis.qualityScore}/100`],
+                ['Строки', String(currentAnalysis.nonEmptyRows)],
+                ['Колонки', String(currentAnalysis.nonEmptyColumns)],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border px-3 py-2" style={{ borderColor: '#EEF2F7', background: '#F8FAFC' }}>
+                  <p className="text-[0.68rem] uppercase tracking-wide" style={{ color: '#94A3B8' }}>{label}</p>
+                  <p className="mt-1 truncate text-sm font-semibold" style={{ color: TEXT }}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {[...currentAnalysis.hardBlockReasons, ...currentAnalysis.warnings].length > 0 && (
+              <div className="mb-3 rounded-xl border px-3 py-2" style={{ borderColor: currentAnalysis.status === 'blocked' ? '#FECACA' : '#FDE68A', background: currentAnalysis.status === 'blocked' ? '#FEF2F2' : '#FFFBEB' }}>
+                <p className="mb-1 text-xs font-semibold" style={{ color: currentAnalysis.status === 'blocked' ? '#991B1B' : '#92400E' }}>
+                  Предупреждения
+                </p>
+                <ul className="space-y-1 text-xs" style={{ color: currentAnalysis.status === 'blocked' ? '#991B1B' : '#92400E' }}>
+                  {[...currentAnalysis.hardBlockReasons, ...currentAnalysis.warnings].map((warning) => (
+                    <li key={warning}>• {warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: BORDER }}>
+              <table className="min-w-full border-collapse text-xs">
+                <tbody>
+                  {currentAnalysis.previewRows.map((row, rowIndex) => (
+                    <tr key={rowIndex} className={rowIndex === 0 ? 'bg-slate-50 font-semibold' : undefined}>
+                      {row.map((cell, colIndex) => (
+                        <td key={`${rowIndex}-${colIndex}`} className="max-w-[180px] truncate border-b border-r px-2.5 py-2" style={{ borderColor: '#EEF2F7', color: TEXT }}>
+                          {cell || '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => inputRef.current?.click()} className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
+                Выбрать другой лист
+              </button>
+              <a href={TEMPLATE_URL} download className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
+                Скачать шаблон
+              </a>
+              <button type="button" onClick={onClearFile} className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
+                Вставить вручную
+              </button>
+            </div>
+          </div>
+        )}
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".txt,.csv,.md,.json,.xlsx,.xls"
+          onChange={handleInputChange}
+          className="hidden"
+        />
       </div>
     )
   }
@@ -1012,12 +1388,13 @@ function FileUploadZone({
 type SectionProps = {
   form: AnalyzeFormFields
   setField: (key: keyof AnalyzeFormFields, value: string) => void
+  fillForm: (data: Partial<AnalyzeFormFields>) => void
   inputCls: string
   inputStyle: React.CSSProperties
   focusStyle: React.CSSProperties
   cfg: AgentCfg
   fileName: string | null
-  onFileLoaded: (text: string, name: string) => void
+  onFileLoaded: (text: string, name: string, analysis?: SheetAnalysis) => void
   onClearFile: () => void
   onFillTest: () => void
 }
@@ -1125,7 +1502,7 @@ function BottleneckPills({
 // ─── P&L form section ─────────────────────────────────────────────────────────
 
 function PnlSection({
-  form, setField, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile, onFillTest,
+  form, setField, fillForm, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile, onFillTest,
 }: SectionProps) {
   return (
     <>
@@ -1158,7 +1535,10 @@ function PnlSection({
         </label>
         <select
           value={form.businessType}
-          onChange={(e) => setField('businessType', e.target.value)}
+          onChange={(e) => {
+            const t = e.target.value
+            fillForm({ businessType: t, industry: t !== 'Другое' ? '' : form.industry })
+          }}
           className={inputCls}
           style={inputStyle}
         >
@@ -1170,6 +1550,19 @@ function PnlSection({
           <option>Онлайн-продукт</option>
           <option>Другое</option>
         </select>
+        {form.businessType === 'Другое' && (
+          <div className="mt-2">
+            <Field
+              label="Укажите тип бизнеса или нишу *"
+              value={form.industry}
+              onChange={(v) => setField('industry', v)}
+              placeholder="Например: франшиза, образовательный проект, строительная компания, фитнес-студия"
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+              focusStyle={focusStyle}
+            />
+          </div>
+        )}
       </div>
 
       {/* 3. Target margin — pills + input */}
@@ -1199,6 +1592,35 @@ function PnlSection({
         <label className="block text-sm mb-2" style={{ color: TEXT2 }}>
           P&L / финансовые данные *
         </label>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <a
+            href={TEMPLATE_URL}
+            download
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50"
+            style={{ borderColor: cfg.accentBorder, color: cfg.accent }}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Скачать шаблон P&L
+          </a>
+          {GOOGLE_SHEETS_TEMPLATE_URL ? (
+            <a
+              href={GOOGLE_SHEETS_TEMPLATE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50"
+              style={{ borderColor: cfg.accentBorder, color: cfg.accent }}
+            >
+              Открыть шаблон в Google Sheets
+            </a>
+          ) : (
+            <span
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium"
+              style={{ borderColor: BORDER, color: '#94A3B8', background: '#F8FAFC' }}
+            >
+              Google Sheets — скоро
+            </span>
+          )}
+        </div>
         <FileUploadZone
           variant="pnl"
           onFileLoaded={onFileLoaded}
@@ -1228,7 +1650,7 @@ function PnlSection({
 // ─── Goldratt form section ────────────────────────────────────────────────────
 
 function GoldrattSection({
-  form, setField, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile, onFillTest,
+  form, setField, fillForm, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile, onFillTest,
 }: SectionProps) {
   return (
     <>
@@ -1261,7 +1683,10 @@ function GoldrattSection({
         </label>
         <select
           value={form.businessType}
-          onChange={(e) => setField('businessType', e.target.value)}
+          onChange={(e) => {
+            const t = e.target.value
+            fillForm({ businessType: t, industry: t !== 'Другое' ? '' : form.industry })
+          }}
           className={inputCls}
           style={inputStyle}
         >
@@ -1273,6 +1698,19 @@ function GoldrattSection({
           <option>Онлайн-продукт</option>
           <option>Другое</option>
         </select>
+        {form.businessType === 'Другое' && (
+          <div className="mt-2">
+            <Field
+              label="Укажите тип бизнеса или нишу *"
+              value={form.industry}
+              onChange={(v) => setField('industry', v)}
+              placeholder="Например: франшиза, образовательный проект, строительная компания, фитнес-студия"
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+              focusStyle={focusStyle}
+            />
+          </div>
+        )}
       </div>
 
       {/* 3. What do you sell */}

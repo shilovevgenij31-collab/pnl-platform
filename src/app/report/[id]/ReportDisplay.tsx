@@ -147,6 +147,51 @@ function sanitizeMarkdownForDisplay(markdown: string): string {
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '')
 }
 
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = []
+  let current = ''
+  let quoted = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    const next = line[index + 1]
+    if (char === '"' && quoted && next === '"') {
+      current += '"'
+      index += 1
+    } else if (char === '"') {
+      quoted = !quoted
+    } else if (char === ',' && !quoted) {
+      cells.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+
+  cells.push(current.trim())
+  return cells
+}
+
+function parseSourceText(sourceText?: string | null) {
+  if (!sourceText?.trim()) return null
+  const [metaPart, tablePart = ''] = sourceText.split('=== Очищенная таблица для анализа ===')
+  const metaLines = metaPart.split('\n').map((line) => line.trim()).filter(Boolean)
+  const metadata: Record<string, string> = {}
+
+  metaLines.forEach((line) => {
+    const [key, ...rest] = line.split(':')
+    if (key && rest.length) metadata[key.trim()] = rest.join(':').trim()
+  })
+
+  const rows = tablePart
+    .trim()
+    .split('\n')
+    .map(splitCsvLine)
+    .filter((row) => row.some(Boolean))
+
+  return { metadata, rows }
+}
+
 function statusLabel(text: string): string {
   const value = text.toLowerCase()
   if (/critical|крит|risk|риск|red/.test(value)) return 'Risk'
@@ -995,6 +1040,89 @@ function FallbackMarkdown({ report, meta }: { report: string; meta: (typeof AGEN
   )
 }
 
+function SourceTableBlock({
+  sourceText,
+  expanded,
+  onToggle,
+}: {
+  sourceText?: string | null
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const parsed = parseSourceText(sourceText)
+  if (!parsed || parsed.rows.length === 0) return null
+
+  const visibleRows = expanded ? parsed.rows : parsed.rows.slice(0, 12)
+  const hasMore = parsed.rows.length > visibleRows.length
+  const warnings = parsed.metadata['Предупреждения']
+
+  return (
+    <section className="mb-3.5 overflow-hidden rounded-2xl border" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
+      <div className="border-b px-4 py-3 sm:px-5" style={{ borderColor: BORDER_SOFT }}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
+              Source data
+            </p>
+            <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>
+              Данные, использованные для анализа
+            </h2>
+          </div>
+          {parsed.metadata['Quality score'] && (
+            <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: '#EFF6FF', color: PRIMARY_BLUE }}>
+              Quality score: {parsed.metadata['Quality score']}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-3 px-4 py-3.5 sm:px-5">
+        <div className="grid gap-2 text-xs sm:grid-cols-4">
+          {[
+            ['Файл', parsed.metadata['Источник'] ?? 'Источник не записан'],
+            ['Лист', parsed.metadata['Лист'] ?? 'Не указан'],
+            ['Строки', parsed.metadata['Строк'] ?? String(parsed.rows.length)],
+            ['Колонки', parsed.metadata['Колонок'] ?? 'Не указано'],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+              <p className="font-semibold" style={{ color: '#94A3B8' }}>{label}</p>
+              <p className="mt-1 truncate font-medium" style={{ color: TEXT }}>{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {warnings && warnings !== 'нет' && (
+          <div className="rounded-xl border px-3 py-2 text-xs" style={{ background: '#FFFBEB', borderColor: '#FDE68A', color: '#92400E' }}>
+            {warnings}
+          </div>
+        )}
+
+        <div className="report-table overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
+          <table className="min-w-full border-collapse text-xs">
+            <tbody>
+              {visibleRows.map((row, rowIndex) => (
+                <tr key={rowIndex} className={rowIndex === 0 ? 'bg-slate-50 font-semibold' : undefined}>
+                  {row.slice(0, 16).map((cell, cellIndex) => (
+                    <td key={`${rowIndex}-${cellIndex}`} className="max-w-[180px] truncate border-b border-r px-3 py-2" style={{ borderColor: BORDER_SOFT, color: TEXT }}>
+                      {cell || '—'}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {(hasMore || expanded) && (
+          <button type="button" onClick={onToggle} className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT }}>
+            {expanded ? 'Скрыть таблицу' : `Показать больше (${parsed.rows.length} строк)`}
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export default function ReportDisplay({
   data,
   isDemo = false,
@@ -1006,6 +1134,7 @@ export default function ReportDisplay({
   const parsed = useMemo(() => buildParsedReport(data.report, data.agentType), [data.report, data.agentType])
   const [copiedReport, setCopiedReport] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
+  const [sourceExpanded, setSourceExpanded] = useState(false)
   const [activeSection, setActiveSection] = useState(() => sections[0]?.id ?? '')
 
   const meta = AGENT_META[data.agentType] ?? AGENT_META.pnl
@@ -1210,6 +1339,14 @@ export default function ReportDisplay({
           )}
 
           <main className="min-w-0 flex-1">
+            {data.agentType === 'pnl' && (
+              <SourceTableBlock
+                sourceText={data.sourceText}
+                expanded={sourceExpanded}
+                onToggle={() => setSourceExpanded((value) => !value)}
+              />
+            )}
+
             {hasSections ? (
               sections.map((section, index) => <SectionCard key={section.id} section={section} meta={meta} index={index} />)
             ) : (

@@ -6,7 +6,7 @@
 - Landing page (`/`) — показывает оба агента с описанием и CTA-кнопками
 - Страница `/analyze` с выбором агента (Server Component + Client)
 - API route (`POST /api/analyze`) — маршрутизирует по `agentType`
-- OpenRouter client с primary router `openrouter/free` и explicit fallback на конкретные free-модели
+- OpenRouter client с primary model `google/gemma-4-31b-it:free` и explicit fallback-моделями
 - Supabase server-side хранение отчётов — каждый отчёт получает UUID
 - Страница `/report/[id]` — Server Component + Client UI с агент-специфичным header/badge
 - Fallback страница `/report` — localStorage для старых сессий
@@ -14,7 +14,8 @@
 - `agent_type` сохраняется в БД
 
 ### UX форм и загрузка файлов
-- Формы упрощены: основной блок виден сразу, дополнительные поля скрыты в коллапсе
+- Формы: 5 полей каждый агент, без скрытых секций и коллапса
+- Тип бизнеса «Другое» показывает дополнительное обязательное поле «Укажите тип бизнеса или нишу» (хранится в `industry`)
 - File upload: drag & drop или клик, поддерживаемые форматы — `.txt`, `.csv`, `.md`, `.json`
 - Файл читается через `FileReader` как текст, вставляется в соответствующее поле формы:
   - P&L Agent → в `pnlText`
@@ -107,6 +108,24 @@ error_message TEXT
 2. Установить `AI_PROVIDER=claude` (опционально `CLAUDE_MODEL=...`)
 3. Перезапустить dev server или сделать Redeploy на Vercel
 
+Если `AI_PROVIDER=claude`, но `ANTHROPIC_API_KEY` отсутствует, система не делает silent fallback на OpenRouter. API возвращает `NOT_CONFIGURED`, а в server logs появляется `[AI] provider=claude missing ANTHROPIC_API_KEY`.
+
+Для передачи другому разработчику нужны env:
+
+```env
+AI_PROVIDER=claude
+ANTHROPIC_API_KEY=...
+CLAUDE_MODEL=claude-3-5-sonnet-latest
+NEXT_PUBLIC_SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+NEXT_PUBLIC_SITE_URL=...
+```
+
+- После смены env локально нужен перезапуск `npm run dev`
+- После смены env на Vercel нужен Redeploy
+- Если в логах запросов provider всё ещё `openrouter`, значит новый env не применился
+- Текущий владелец проекта может локально использовать OpenRouter; Excel quality gate и hard block от этого не зависят
+
 P&L и Goldratt промпты менять не нужно — оба агента используют общий provider layer.
 
 Для production рекомендуется Claude или платная OpenRouter модель вместо free tier.
@@ -117,7 +136,7 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 - Авторизация пользователей (история по аккаунту)
 - Очередь задач (job queue для AI-запросов)
 - Панель администратора
-- Парсинг PDF на сервере (Excel `.xlsx` уже поддерживается на клиенте)
+- Парсинг PDF на сервере (Excel `.xlsx` уже поддерживается на клиенте через sheet selector, preview и quality gate)
 - RLS-политики Supabase
 - Rate limiting (сейчас in-memory, не shared между serverless instances)
 - Тесты (unit / integration)
@@ -131,13 +150,12 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 
 ## Следующий технический этап
 
-1. **Production AI provider** — добавить `src/lib/ai/claude.ts`, переключить фабрику
-2. **Очередь задач** — вынести AI-запросы в background job (Inngest / BullMQ)
-3. **Email** — отправка отчёта на email после генерации
-4. **Авторизация** — Supabase Auth, история отчётов по аккаунту
-5. **RLS-политики** — ограничить доступ к отчётам
-6. **Загрузка файлов** — парсинг Excel/CSV на сервере
-7. **Панель администратора**
+1. **Очередь задач** — вынести AI-запросы в background job (Inngest / BullMQ)
+2. **Email** — отправка отчёта на email после генерации
+3. **Авторизация** — Supabase Auth, история отчётов по аккаунту
+4. **RLS-политики** — ограничить доступ к отчётам
+5. **Загрузка файлов** — парсинг PDF на сервере
+6. **Панель администратора**
 
 ## Обработка edge cases
 
@@ -169,6 +187,22 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 - `/api/analyze` настроен как Node.js route handler с `maxDuration = 180` для long-running AI requests на Vercel.
 - `next.config.ts` задаёт `turbopack.root`, чтобы Next.js не выбирал parent workspace root из-за лишнего `package-lock.json`.
 
+## P1 fixes (round 2)
+
+- Server-side P&L quality gate добавлен в `POST /api/analyze`: если `agentType=pnl` и `pnlText` содержит мусор (менее 3 чисел, все нули, нет ключевых слов выручки и расходов), AI не вызывается — возвращается `400 VALIDATION_ERROR`.
+- Тип бизнеса «Другое» в обеих формах (P&L и Goldratt) показывает дополнительное обязательное поле «Укажите тип бизнеса или нишу». Значение хранится в `industry` и попадает в AI-промпт. Форма блокирует сабмит, если поле пустое.
+
+## Pre-demo Excel ingestion hardening
+
+- P&L Agent больше не отправляет первый Excel-лист вслепую: все листы получают metadata и quality score, лучший лист выбирается автоматически, пользователь может выбрать другой.
+- Добавлен preview “Проверьте данные перед анализом”: файл, лист, строки, колонки, score, warnings и первые строки нормализованной таблицы.
+- Добавлен client-side quality gate: пустые, нулевые, битые и непохожие на P&L листы блокируют запуск AI до запроса в `/api/analyze`.
+- Excel normalizer удаляет пустые строки/колонки, добавляет metadata в начало `pnl_text`, ограничивает размер normalized text и помечает обрезку warning.
+- Добавлен Excel-шаблон `public/templates/pnl-template.xlsx`; Google Sheets CTA предусмотрен, ссылка добавляется в `GOOGLE_SHEETS_TEMPLATE_URL`.
+- Report UI показывает блок “Данные, использованные для анализа” из сохранённого `pnl_text`.
+- `/report` fallback и report not found приведены к light dashboard theme.
+- API route пишет structured logs без полного P&L/raw prompt: requestId, provider, model, agentType, input length, AI/DB duration, report length и source metadata count.
+
 ## Production notes
 
 - In-memory rate limit не общий между serverless instances. Для публичного production заменить на Redis/Upstash/Vercel KV.
@@ -197,6 +231,6 @@ NEXT_PUBLIC_SITE_URL=
 
 ## OpenRouter routing
 
-- Primary model берётся из `OPENROUTER_MODEL`, а если env пустой, дефолт = `openrouter/free`
-- Если `openrouter/free` не ответил, provider пробует fallback: `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `openai/gpt-oss-20b:free`
-- `modelUsed` старается сохранить реальную модель из ответа OpenRouter; если router её не вернул, сохраняется отправленная модель, например `openrouter/free`
+- Primary model берётся из `OPENROUTER_MODEL`, а если env пустой, дефолт = `google/gemma-4-31b-it:free`
+- Если primary не ответил, provider пробует fallback: `openai/gpt-oss-120b:free`, `nvidia/nemotron-3-super-120b-a12b:free`
+- `modelUsed` старается сохранить реальную модель из ответа OpenRouter; если router её не вернул, сохраняется отправленная модель

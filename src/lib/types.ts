@@ -30,6 +30,12 @@ export interface AnalyzeFormFields {
   ownerDependency: string
   unfinishedProjects: string
   desiredResult: string
+  sourceFileName?: string
+  selectedSheet?: string
+  parsedRows?: string
+  parsedColumns?: string
+  qualityScore?: string
+  qualityWarnings?: string
 }
 
 // AI message passed to any provider
@@ -67,6 +73,7 @@ export interface ReportPageData {
   mode: string
   agentType: AgentType
   modelUsed?: string | null
+  sourceText?: string | null
 }
 
 // Typed error codes for all API responses
@@ -91,6 +98,7 @@ export interface AnalyzeApiSuccess {
 export interface AnalyzeApiError {
   error: string
   code: ErrorCode
+  requestId?: string
 }
 
 // AI succeeded but DB save failed — report text returned so client can use localStorage fallback

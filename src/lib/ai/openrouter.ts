@@ -1,4 +1,4 @@
-import { AIProviderError } from './provider'
+import { AIProviderError, isLikelyTimeoutError } from './provider'
 import type { AIProvider, AIMessage, AIResponse, AIProviderErrorCode } from './provider'
 
 const API_KEY = process.env.OPENROUTER_API_KEY
@@ -21,7 +21,7 @@ type ModelCallResult =
   | { status: 'empty' }
 
 function normalizeFetchError(error: unknown): AIProviderError {
-  if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+  if (isLikelyTimeoutError(error)) {
     return new AIProviderError('AI_TIMEOUT', 'OpenRouter request timed out')
   }
   return new AIProviderError(

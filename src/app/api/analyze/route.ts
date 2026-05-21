@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAIProvider } from '@/lib/ai'
-import { AIProviderError } from '@/lib/ai/provider'
+import { createAIProvider, getAIProviderConfig } from '@/lib/ai'
+import { AIProviderError, isLikelyTimeoutError } from '@/lib/ai/provider'
 import { PNL_SYSTEM_PROMPT } from '@/lib/ai/prompts/pnlPrompt'
 import { GOLDRATT_SYSTEM_PROMPT } from '@/lib/ai/prompts/goldrattPrompt'
 import { buildUserPrompt } from '@/lib/ai/prompts/buildUserPrompt'
@@ -17,10 +17,34 @@ const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000
 const RATE_LIMIT_MAX_REQUESTS = 5
 const rateLimitStore = new Map<string, RateLimitEntry>()
 
+const PNL_REVENUE_KW = ['выручка', 'доход', 'продажи', 'оборот', 'агентское вознаграждение', 'revenue', 'income', 'sales']
+const PNL_EXPENSE_KW = ['расходы', 'расход', 'себестоимость', 'фот', 'зарплата', 'маркетинг', 'аренда', 'подрядчики', 'expense', 'cost', 'salary']
+
+function assessPnlTextQuality(text: string): string | null {
+  const lower = text.toLowerCase()
+  const numericTokens = text.match(/\d+/g) ?? []
+  if (numericTokens.length < 3) {
+    return 'Данные не содержат числовых значений. Добавьте финансовые данные: выручку, расходы, прибыль.'
+  }
+  if (numericTokens.every((t) => Number(t) === 0)) {
+    return 'Все числовые значения равны нулю. Добавьте реальные финансовые данные.'
+  }
+  const hasRevenue = PNL_REVENUE_KW.some((kw) => lower.includes(kw))
+  const hasExpenses = PNL_EXPENSE_KW.some((kw) => lower.includes(kw))
+  if (!hasRevenue && !hasExpenses) {
+    return 'Данные не похожи на заполненный P&L. Добавьте выручку, расходы и числовые значения или используйте шаблон.'
+  }
+  return null
+}
+
 function validateInput(data: FormInput, agentType: AgentType): string | null {
   if (agentType === 'pnl') {
     if (!data.pnlText?.trim() && !data.mainPain?.trim()) {
       return 'Добавьте P&L-данные или опишите финансовую ситуацию.'
+    }
+    if (data.pnlText?.trim()) {
+      const qualityIssue = assessPnlTextQuality(data.pnlText.trim())
+      if (qualityIssue) return qualityIssue
     }
   } else {
     if (!data.mainPain?.trim() && !data.whatDoYouSell?.trim()) {
@@ -54,10 +78,17 @@ function isRateLimited(key: string): boolean {
 }
 
 function aiErrorResponse(error: unknown): { error: string; code: ErrorCode } {
+  if (isLikelyTimeoutError(error)) {
+    return {
+      error: 'AI-анализ занял слишком много времени. Попробуйте ещё раз или откройте demo-отчёт.',
+      code: 'AI_TIMEOUT',
+    }
+  }
+
   if (error instanceof AIProviderError) {
     if (error.code === 'NOT_CONFIGURED') {
       return {
-        error: 'AI-провайдер не настроен. Проверьте OPENROUTER_API_KEY в .env.local.',
+        error: 'AI-провайдер не настроен. Проверьте env выбранного провайдера в .env.local.',
         code: 'NOT_CONFIGURED',
       }
     }
@@ -88,10 +119,13 @@ function aiErrorResponse(error: unknown): { error: string; code: ErrorCode } {
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = crypto.randomUUID()
+  const startedAt = Date.now()
   // MVP in-memory limiter. It is not shared across serverless instances; use Redis/Upstash/KV for production.
   if (isRateLimited(getClientIp(req))) {
+    console.warn('[POST /api/analyze] rate limited', { requestId })
     return NextResponse.json(
-      { error: 'Слишком много запросов. Попробуйте позже.', code: 'RATE_LIMITED' },
+      { error: 'Слишком много запросов. Попробуйте позже.', code: 'RATE_LIMITED', requestId },
       { status: 429 },
     )
   }
@@ -101,23 +135,39 @@ export async function POST(req: NextRequest) {
     body = await req.json()
   } catch {
     return NextResponse.json(
-      { error: 'Некорректный формат запроса.', code: 'VALIDATION_ERROR' },
+      { error: 'Некорректный формат запроса.', code: 'VALIDATION_ERROR', requestId },
       { status: 400 },
     )
   }
 
   const agentType: AgentType = body.agentType === 'goldratt' ? 'goldratt' : 'pnl'
+  const inputLengthChars = buildUserPrompt(body, agentType).length
+  const aiConfig = getAIProviderConfig()
+  const logBase = {
+    requestId,
+    provider: aiConfig.provider,
+    model: aiConfig.model,
+    agentType,
+    inputLengthChars,
+    fileName: body.sourceFileName || undefined,
+    selectedSheet: body.selectedSheet || undefined,
+    parsedRows: body.parsedRows || undefined,
+    parsedColumns: body.parsedColumns || undefined,
+    qualityScore: body.qualityScore || undefined,
+    qualityWarningsCount: body.qualityWarnings ? body.qualityWarnings.split('|').filter(Boolean).length : undefined,
+  }
 
   const validationError = validateInput(body, agentType)
   if (validationError) {
     return NextResponse.json(
-      { error: validationError, code: 'VALIDATION_ERROR' },
+      { error: validationError, code: 'VALIDATION_ERROR', requestId },
       { status: 400 },
     )
   }
 
   let report: string
   let modelUsed: string
+  const aiStart = Date.now()
   try {
     const systemPrompt = agentType === 'pnl' ? PNL_SYSTEM_PROMPT : GOLDRATT_SYSTEM_PROMPT
     const userPrompt = buildUserPrompt(body, agentType)
@@ -127,16 +177,41 @@ export async function POST(req: NextRequest) {
     ])
     report = result.content
     modelUsed = result.modelUsed
+    console.info('[POST /api/analyze] AI completed', {
+      ...logBase,
+      modelUsed,
+      aiDurationMs: Date.now() - aiStart,
+      reportLengthChars: report.length,
+    })
   } catch (error) {
-    console.error('[POST /api/analyze] AI error:', error)
-    return NextResponse.json(aiErrorResponse(error), { status: 500 })
+    const normalized = aiErrorResponse(error)
+    console.error('[POST /api/analyze] AI error:', {
+      ...logBase,
+      aiDurationMs: Date.now() - aiStart,
+      errorCode: normalized.code,
+      rawError: error,
+    })
+    return NextResponse.json({ ...normalized, requestId }, { status: 500 })
   }
 
+  const dbStart = Date.now()
   try {
     const { id } = await saveReportToDatabase({ ...body, report, modelUsed, agentType })
+    console.info('[POST /api/analyze] completed', {
+      ...logBase,
+      modelUsed,
+      dbSaveDurationMs: Date.now() - dbStart,
+      totalDurationMs: Date.now() - startedAt,
+      reportLengthChars: report.length,
+    })
     return NextResponse.json({ id, status: 'success' })
   } catch (error) {
-    console.error('[POST /api/analyze] DB save error:', error)
+    console.error('[POST /api/analyze] DB save error:', {
+      ...logBase,
+      dbSaveDurationMs: Date.now() - dbStart,
+      errorCode: 'DB_SAVE_FAILED',
+      rawError: error,
+    })
     const isConfig = error instanceof Error && error.message.includes('Supabase не настроен')
     return NextResponse.json(
       {
@@ -144,6 +219,7 @@ export async function POST(req: NextRequest) {
           ? 'Сервер хранения не настроен. Отчёт был сгенерирован.'
           : 'Отчёт был сгенерирован, но не удалось сохранить его на сервере. Попробуйте ещё раз.',
         code: 'DB_SAVE_FAILED',
+        requestId,
         report,
         company: body.company || body.name || 'Ваш бизнес',
       },

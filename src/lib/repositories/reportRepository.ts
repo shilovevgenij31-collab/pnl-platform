@@ -51,7 +51,7 @@ export async function getReportById(id: string): Promise<ReportPageData | null> 
 
   const { data, error } = await supabase
     .from('reports')
-    .select('id, created_at, company, report, agent_type, model_used')
+    .select('id, created_at, company, report, agent_type, model_used, pnl_text')
     .eq('id', id)
     .single()
 
@@ -80,5 +80,6 @@ export async function getReportById(id: string): Promise<ReportPageData | null> 
     mode: agentType === 'goldratt' ? 'Goldratt / TOC' : 'P&L Analysis',
     agentType,
     modelUsed: (data.model_used as string | null) || null,
+    sourceText: (data.pnl_text as string | null) || null,
   }
 }

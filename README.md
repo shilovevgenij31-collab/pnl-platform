@@ -11,7 +11,16 @@
 - **Загрузка файла** — drag & drop или выбор файла: `.txt`, `.csv`, `.md`, `.json`
 - **Вставка текстом** — скопировать из Excel / Google Sheets и вставить в textarea
 
-Excel и PDF пока через copy-paste. Парсинг `.xlsx` / `.pdf` — следующий этап.
+P&L Agent поддерживает `.xlsx` / `.xls`: после загрузки Excel показывает список листов, автоматически выбирает лучший лист по quality score, показывает preview и блокирует запуск AI, если лист не похож на заполненный P&L. PDF parser пока не реализован.
+
+### Excel ingestion и шаблон P&L
+
+- Excel-листы оцениваются до AI: строки, колонки, ненулевые числа, ключевые слова выручки/расходов/прибыли, ошибки формул.
+- Перед анализом пользователь видит preview “Проверьте данные перед анализом”.
+- При hard block Claude не вызывается и отчёт не создаётся.
+- Шаблон Excel доступен в `public/templates/pnl-template.xlsx` и по URL `/templates/pnl-template.xlsx`.
+- Google Sheets CTA предусмотрен в UI; ссылку нужно добавить в constant `GOOGLE_SHEETS_TEMPLATE_URL`, когда шаблон будет опубликован.
+- В отчёте P&L показывается блок “Данные, использованные для анализа” на основе сохранённого `pnl_text`.
 
 ## Быстрый старт
 
@@ -76,9 +85,28 @@ CLAUDE_MODEL=claude-3-5-sonnet-latest
 
 `CLAUDE_MODEL` необязателен — без него используется `claude-3-5-sonnet-latest`.
 
+Если `AI_PROVIDER=claude`, но `ANTHROPIC_API_KEY` не задан, приложение не делает silent fallback на OpenRouter: API вернёт `NOT_CONFIGURED`, а в server logs появится запись `[AI] provider=claude missing ANTHROPIC_API_KEY`.
+
 **После изменения env:**
 - Локально — перезапустите dev server (`npm run dev`)
 - Vercel — нажмите Redeploy в панели управления
+
+### How To Hand Off Claude
+
+Для следующего разработчика достаточно выставить env:
+
+```env
+AI_PROVIDER=claude
+ANTHROPIC_API_KEY=...
+CLAUDE_MODEL=claude-3-5-sonnet-latest
+NEXT_PUBLIC_SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+NEXT_PUBLIC_SITE_URL=...
+```
+
+- Если после перезапуска в логах запросов provider всё ещё `openrouter`, значит env не применился.
+- У текущего владельца проекта локально может оставаться OpenRouter. Это нормально.
+- Excel quality gate, preview и hard block работают до AI и не зависят от выбранной модели.
 
 Supabase env остаются теми же при любом провайдере.
 
@@ -264,7 +292,7 @@ API всегда возвращает предсказуемую структу�
 { "error": "safe user-facing message", "code": "ERROR_CODE" }
 ```
 
-**Коды ошибок:** `VALIDATION_ERROR` · `AI_ERROR` · `DB_SAVE_FAILED` · `NOT_CONFIGURED` · `INTERNAL_ERROR`
+**Коды ошибок:** `VALIDATION_ERROR` · `RATE_LIMITED` · `NOT_CONFIGURED` · `AI_TIMEOUT` · `AI_RATE_LIMITED` · `AI_PROVIDER_ERROR` · `AI_EMPTY_RESPONSE` · `DB_SAVE_FAILED` · `INTERNAL_ERROR`
 
 **Особый случай — `DB_SAVE_FAILED`:** AI сгенерировал отчёт, но Supabase не сохранил.
 API возвращает:
@@ -336,6 +364,6 @@ AI-запросы могут быть долгими. Для production лучш
 
 ### OpenRouter Free Router
 
-- Primary model по умолчанию: `openrouter/free`
-- Если free router не ответил, provider пробует explicit fallback: `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `openai/gpt-oss-20b:free`
-- `modelUsed` старается сохранить реальную модель из ответа OpenRouter; если router её не раскрыл, сохраняется `openrouter/free`
+- Primary model по умолчанию: `google/gemma-4-31b-it:free` (задаётся через `OPENROUTER_MODEL`)
+- Если primary не ответил, provider пробует fallback: `openai/gpt-oss-120b:free`, `nvidia/nemotron-3-super-120b-a12b:free`
+- `modelUsed` старается сохранить реальную модель из ответа OpenRouter; если router её не раскрыл, сохраняется отправленная модель
