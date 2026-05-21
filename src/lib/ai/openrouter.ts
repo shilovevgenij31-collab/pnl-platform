@@ -2,15 +2,16 @@ import { AIProviderError } from './provider'
 import type { AIProvider, AIMessage, AIResponse, AIProviderErrorCode } from './provider'
 
 const API_KEY = process.env.OPENROUTER_API_KEY
-const PRIMARY_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/free'
+// Tested 2026-05-21: gemma OK (859ms simple), gpt-oss-120b OK, nemotron OK
+// openrouter/free routes to arcee-ai/trinity-large-thinking:free (thinking model, content:null)
+// We extract reasoning as fallback so openrouter/free still works
+const PRIMARY_MODEL = process.env.OPENROUTER_MODEL || 'google/gemma-4-31b-it:free'
 const BASE_URL = 'https://openrouter.ai/api/v1'
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
-// The free router may pick any currently available free model. These explicit fallbacks keep MVP alive when it does not.
 const FALLBACK_MODELS = [
-  'google/gemma-4-31b-it:free',
+  'openai/gpt-oss-120b:free',
   'nvidia/nemotron-3-super-120b-a12b:free',
-  'openai/gpt-oss-20b:free',
 ]
 
 type ModelCallResult =
@@ -23,7 +24,6 @@ function normalizeFetchError(error: unknown): AIProviderError {
   if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
     return new AIProviderError('AI_TIMEOUT', 'OpenRouter request timed out')
   }
-
   return new AIProviderError(
     'AI_PROVIDER_ERROR',
     error instanceof Error ? error.message : 'OpenRouter request failed',
@@ -43,7 +43,7 @@ async function callModel(model: string, messages: AIMessage[]): Promise<ModelCal
         'X-Title': 'Profitability AI Analyst',
       },
       body: JSON.stringify({ model, messages, max_tokens: 4000, temperature: 0.3 }),
-      signal: AbortSignal.timeout(150_000),
+      signal: AbortSignal.timeout(120_000),
     })
   } catch (error) {
     throw normalizeFetchError(error)
@@ -51,6 +51,7 @@ async function callModel(model: string, messages: AIMessage[]): Promise<ModelCal
 
   if (response.status === 429) return { status: 'rate_limited' }
   if (response.status === 503) return { status: 'unavailable' }
+  if (response.status === 404) return { status: 'unavailable' }
 
   if (!response.ok) {
     const text = await response.text()
@@ -58,7 +59,12 @@ async function callModel(model: string, messages: AIMessage[]): Promise<ModelCal
   }
 
   const data = await response.json()
-  const content = data.choices?.[0]?.message?.content
+  const message = data.choices?.[0]?.message
+
+  // Thinking models (e.g. openrouter/free → arcee-ai/trinity-large-thinking) return
+  // content: null with reasoning filled in. Fall back to reasoning so the route still works.
+  const content: unknown = message?.content ?? message?.reasoning
+
   const resolvedModel =
     (typeof data.model === 'string' && data.model) ||
     (typeof data.provider?.model === 'string' && data.provider.model) ||
