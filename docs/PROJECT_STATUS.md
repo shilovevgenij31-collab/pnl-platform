@@ -90,16 +90,36 @@ error_message TEXT
 → /report/[id] (header/badge по agentType)
 ```
 
+## AI Provider
+
+Провайдер переключается через env `AI_PROVIDER` без изменения кода:
+
+| `AI_PROVIDER` | Реализация | Файл |
+|---|---|---|
+| `openrouter` (default) | `OpenRouterProvider` | `src/lib/ai/openrouter.ts` |
+| `claude` | `ClaudeProvider` | `src/lib/ai/claude.ts` |
+
+Фабрика `createAIProvider()` в `src/lib/ai/index.ts` — логика выбора.  
+Если `AI_PROVIDER` пустой → OpenRouter. Если неизвестный → warning + OpenRouter.
+
+**Чтобы подключить Claude:**
+1. Добавить `ANTHROPIC_API_KEY=sk-ant-...`
+2. Установить `AI_PROVIDER=claude` (опционально `CLAUDE_MODEL=...`)
+3. Перезапустить dev server или сделать Redeploy на Vercel
+
+P&L и Goldratt промпты менять не нужно — оба агента используют общий provider layer.
+
+Для production рекомендуется Claude или платная OpenRouter модель вместо free tier.
+
 ## Что пока не реализовано
 
 - Email уведомления
 - Авторизация пользователей (история по аккаунту)
 - Очередь задач (job queue для AI-запросов)
 - Панель администратора
-- Production AI provider (Claude / OpenAI)
-- Парсинг Excel (.xlsx) и PDF на сервере — текстовые файлы уже поддерживаются
+- Парсинг PDF на сервере (Excel `.xlsx` уже поддерживается на клиенте)
 - RLS-политики Supabase
-- Rate limiting
+- Rate limiting (сейчас in-memory, не shared между serverless instances)
 - Тесты (unit / integration)
 
 ## Известные ограничения
@@ -160,12 +180,20 @@ error_message TEXT
 ## Current env example
 
 ```env
+AI_PROVIDER=openrouter
+
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=openrouter/free
+OPENROUTER_MODEL=google/gemma-4-31b-it:free
+
+ANTHROPIC_API_KEY=
+CLAUDE_MODEL=claude-3-5-sonnet-latest
+
 NEXT_PUBLIC_SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SITE_URL=
 ```
+
+Полный шаблон: `.env.example` в корне `platform/`.
 
 ## OpenRouter routing
 

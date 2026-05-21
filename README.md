@@ -18,7 +18,7 @@ Excel и PDF пока через copy-paste. Парсинг `.xlsx` / `.pdf` —
 ```bash
 cd platform
 npm install
-cp .env.local.example .env.local  # заполните ключи
+cp .env.example .env.local  # заполните ключи
 npm run dev
 ```
 
@@ -26,26 +26,61 @@ npm run dev
 
 ## Переменные окружения
 
-Создайте `.env.local` в папке `platform/`:
+Скопируйте `.env.example` в `.env.local` и заполните ключи:
 
 ```env
-# OpenRouter (обязательно)
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=openrouter/free
+# AI Provider — "openrouter" (default) or "claude"
+AI_PROVIDER=openrouter
 
-# Supabase (обязательно для сохранения отчётов)
+# OpenRouter (needed when AI_PROVIDER=openrouter)
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=google/gemma-4-31b-it:free
+
+# Claude / Anthropic (needed when AI_PROVIDER=claude)
+ANTHROPIC_API_KEY=
+CLAUDE_MODEL=claude-3-5-sonnet-latest
+
+# Supabase — always required for saving reports
 NEXT_PUBLIC_SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# Публичный URL
-NEXT_PUBLIC_SITE_URL=
+# Public URL of the deployment
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-> Текущая временная рекомендация для MVP/demo: `OPENROUTER_MODEL=openrouter/free`. Это официальный OpenRouter Free Models Router, который сам выбирает доступную бесплатную модель.
->
-> Free router нестабилен: возможны задержки, 429 и смена реальной underlying model. Для production нужна Claude/OpenAI или платная стабильная модель.
-
 > `SUPABASE_SERVICE_ROLE_KEY` используется исключительно на сервере (`src/lib/supabase/server.ts`). Никогда не передаётся в браузер.
+
+## Switching AI provider
+
+AI-провайдер переключается через переменную `AI_PROVIDER`.  
+P&L и Goldratt промпты не меняются — оба агента используют общий provider layer.
+
+### OpenRouter (default)
+
+```env
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=google/gemma-4-31b-it:free
+```
+
+OpenRouter поддерживает бесплатные модели, но они нестабильны на free tier.  
+Для production используйте платную модель через OpenRouter или переключитесь на Claude.
+
+### Claude / Anthropic
+
+```env
+AI_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_MODEL=claude-3-5-sonnet-latest
+```
+
+`CLAUDE_MODEL` необязателен — без него используется `claude-3-5-sonnet-latest`.
+
+**После изменения env:**
+- Локально — перезапустите dev server (`npm run dev`)
+- Vercel — нажмите Redeploy в панели управления
+
+Supabase env остаются теми же при любом провайдере.
 
 ## Supabase Setup
 
@@ -189,15 +224,23 @@ src/
 
 ```typescript
 export interface AIProvider {
-  chat(messages: AIMessage[]): Promise<string>
+  chat(messages: AIMessage[]): Promise<AIResponse>
+  // AIResponse = { content: string; modelUsed: string }
 }
 ```
 
-### Как заменить OpenRouter на Claude
+Фабрика `createAIProvider()` выбирает реализацию по `AI_PROVIDER`:
 
-1. Создайте `src/lib/ai/claude.ts` с классом `ClaudeProvider implements AIProvider`
-2. В `src/lib/ai/index.ts` замените `new OpenRouterProvider()` на `new ClaudeProvider()`
-3. Добавьте `ANTHROPIC_API_KEY` в `.env.local`
+| `AI_PROVIDER` | Реализация | Ключ |
+|---|---|---|
+| `openrouter` (default) | `OpenRouterProvider` | `OPENROUTER_API_KEY` |
+| `claude` | `ClaudeProvider` | `ANTHROPIC_API_KEY` |
+
+### Подключить Claude
+
+1. Добавьте `ANTHROPIC_API_KEY=sk-ant-...` в `.env.local`
+2. Установите `AI_PROVIDER=claude`
+3. Перезапустите dev server — всё остальное работает без изменений
 
 ## Стек
 
@@ -263,15 +306,29 @@ npx vercel --prod
 
 ### Vercel env
 
-Добавьте в Vercel:
+Полный список переменных для Vercel:
 
 ```env
-OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openrouter/free
-NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
+# Выбор провайдера (обязательно)
+AI_PROVIDER=openrouter
+
+# OpenRouter — заполнить если AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=google/gemma-4-31b-it:free
+
+# Claude — заполнить если AI_PROVIDER=claude
+ANTHROPIC_API_KEY=
+CLAUDE_MODEL=claude-3-5-sonnet-latest
+
+# Supabase — нужны всегда
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ```
+
+- Если используется OpenRouter — Claude env можно оставить пустыми
+- Если используется Claude — OpenRouter env можно оставить пустыми
+- Supabase env нужны всегда для сохранения отчётов
 
 ### Production note
 
