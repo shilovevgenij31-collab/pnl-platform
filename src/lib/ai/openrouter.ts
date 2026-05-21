@@ -2,18 +2,19 @@ import { AIProviderError } from './provider'
 import type { AIProvider, AIMessage, AIResponse, AIProviderErrorCode } from './provider'
 
 const API_KEY = process.env.OPENROUTER_API_KEY
-const PRIMARY_MODEL = process.env.OPENROUTER_MODEL || 'google/gemma-4-31b-it:free'
+const PRIMARY_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/free'
 const BASE_URL = 'https://openrouter.ai/api/v1'
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
-// Tested 2026-05-21: gemma=859ms OK, nemotron=1590ms OK, gpt-oss=11s OK, rest 404/429
+// The free router may pick any currently available free model. These explicit fallbacks keep MVP alive when it does not.
 const FALLBACK_MODELS = [
+  'google/gemma-4-31b-it:free',
   'nvidia/nemotron-3-super-120b-a12b:free',
   'openai/gpt-oss-20b:free',
 ]
 
 type ModelCallResult =
-  | { status: 'ok'; content: string }
+  | { status: 'ok'; content: string; modelUsed: string }
   | { status: 'rate_limited' }
   | { status: 'unavailable' }
   | { status: 'empty' }
@@ -58,12 +59,16 @@ async function callModel(model: string, messages: AIMessage[]): Promise<ModelCal
 
   const data = await response.json()
   const content = data.choices?.[0]?.message?.content
+  const resolvedModel =
+    (typeof data.model === 'string' && data.model) ||
+    (typeof data.provider?.model === 'string' && data.provider.model) ||
+    model
 
   if (!content || typeof content !== 'string' || !content.trim()) {
     return { status: 'empty' }
   }
 
-  return { status: 'ok', content }
+  return { status: 'ok', content, modelUsed: resolvedModel }
 }
 
 export class OpenRouterProvider implements AIProvider {
@@ -78,7 +83,7 @@ export class OpenRouterProvider implements AIProvider {
     for (const model of models) {
       try {
         const result = await callModel(model, messages)
-        if (result.status === 'ok') return { content: result.content, modelUsed: model }
+        if (result.status === 'ok') return { content: result.content, modelUsed: result.modelUsed || model }
         if (result.status === 'rate_limited') lastCode = 'AI_RATE_LIMITED'
         if (result.status === 'unavailable') lastCode = 'AI_PROVIDER_ERROR'
         if (result.status === 'empty') lastCode = 'AI_EMPTY_RESPONSE'

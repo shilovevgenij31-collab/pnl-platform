@@ -30,16 +30,20 @@ npm run dev
 
 ```env
 # OpenRouter (обязательно)
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openrouter/free
 
 # Supabase (обязательно для сохранения отчётов)
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...   # только сервер, никогда не на клиент
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
 
 # Публичный URL
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_SITE_URL=
 ```
+
+> Текущая временная рекомендация для MVP/demo: `OPENROUTER_MODEL=openrouter/free`. Это официальный OpenRouter Free Models Router, который сам выбирает доступную бесплатную модель.
+>
+> Free router нестабилен: возможны задержки, 429 и смена реальной underlying model. Для production нужна Claude/OpenAI или платная стабильная модель.
 
 > `SUPABASE_SERVICE_ROLE_KEY` используется исключительно на сервере (`src/lib/supabase/server.ts`). Никогда не передаётся в браузер.
 
@@ -263,7 +267,7 @@ npx vercel --prod
 
 ```env
 OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=...
+OPENROUTER_MODEL=openrouter/free
 NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
@@ -272,3 +276,9 @@ SUPABASE_SERVICE_ROLE_KEY=...
 ### Production note
 
 AI-запросы могут быть долгими. Для production лучше заменить in-memory limiter на Redis/Upstash/Vercel KV, а генерацию отчётов вынести в queue/background jobs. Также проверьте, что выбранный тариф/настройка Vercel выдерживает long-running AI requests.
+
+### OpenRouter Free Router
+
+- Primary model по умолчанию: `openrouter/free`
+- Если free router не ответил, provider пробует explicit fallback: `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `openai/gpt-oss-20b:free`
+- `modelUsed` старается сохранить реальную модель из ответа OpenRouter; если router её не раскрыл, сохраняется `openrouter/free`

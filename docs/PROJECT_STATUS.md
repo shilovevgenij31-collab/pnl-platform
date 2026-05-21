@@ -6,7 +6,7 @@
 - Landing page (`/`) — показывает оба агента с описанием и CTA-кнопками
 - Страница `/analyze` с выбором агента (Server Component + Client)
 - API route (`POST /api/analyze`) — маршрутизирует по `agentType`
-- OpenRouter client с fallback на 4 резервные модели при ошибке 429/503
+- OpenRouter client с primary router `openrouter/free` и explicit fallback на конкретные free-модели
 - Supabase server-side хранение отчётов — каждый отчёт получает UUID
 - Страница `/report/[id]` — Server Component + Client UI с агент-специфичным header/badge
 - Fallback страница `/report` — localStorage для старых сессий
@@ -104,7 +104,7 @@ error_message TEXT
 
 ## Известные ограничения
 
-- Бесплатные модели OpenRouter нестабильны: задержки 1–3 минуты, ошибки 429
+- OpenRouter Free Router (`openrouter/free`) нестабилен: задержки 1–3 минуты, ошибки 429 и возможная смена реальной underlying model
 - Нет production-ready AI provider
 - Нет RLS — все отчёты доступны по UUID без авторизации
 - Нет rate limiting
@@ -154,3 +154,21 @@ error_message TEXT
 - In-memory rate limit не общий между serverless instances. Для публичного production заменить на Redis/Upstash/Vercel KV.
 - AI generation может занимать долгое время. Для production лучше добавить queue/background jobs и проверить лимиты Vercel plan.
 - Free OpenRouter models остаются нестабильным местом. Архитектура готова к отдельному Claude/OpenAI provider через текущий `AIProvider` interface.
+- Текущая временная рекомендуемая модель для MVP/demo: `OPENROUTER_MODEL=openrouter/free`. Router сам выбирает доступную бесплатную модель.
+- Для production нужен Claude/OpenAI или платная OpenRouter model вместо free router.
+
+## Current env example
+
+```env
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openrouter/free
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_SITE_URL=
+```
+
+## OpenRouter routing
+
+- Primary model берётся из `OPENROUTER_MODEL`, а если env пустой, дефолт = `openrouter/free`
+- Если `openrouter/free` не ответил, provider пробует fallback: `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `openai/gpt-oss-20b:free`
+- `modelUsed` старается сохранить реальную модель из ответа OpenRouter; если router её не вернул, сохраняется отправленная модель, например `openrouter/free`
