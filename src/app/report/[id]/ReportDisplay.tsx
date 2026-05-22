@@ -52,7 +52,7 @@ type Tone = keyof typeof TONES
 
 const AGENT_META = {
   pnl: {
-    badge: 'Financial Analysis',
+    badge: 'Финансовый анализ',
     title: 'P&L-отчёт',
     subtitle: 'Финансовый разбор прибыльности бизнеса',
     icon: BarChart3,
@@ -137,12 +137,12 @@ function cleanText(text: string): string {
 
 function sanitizeMarkdownForDisplay(markdown: string): string {
   return markdown
-    .replace(/🔴/g, 'Critical')
-    .replace(/🟡/g, 'Warning')
-    .replace(/🟢/g, 'Good')
-    .replace(/✅/g, 'High confidence')
-    .replace(/⚠️|⚠/g, 'Warning')
-    .replace(/🎯/g, 'Target')
+    .replace(/🔴/g, 'Критично')
+    .replace(/🟡/g, 'Внимание')
+    .replace(/🟢/g, 'Норма')
+    .replace(/✅/g, 'Высокая уверенность')
+    .replace(/⚠️|⚠/g, 'Внимание')
+    .replace(/🎯/g, 'Цель')
     .replace(/\p{Emoji_Presentation}/gu, '')
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '')
 }
@@ -194,19 +194,19 @@ function parseSourceText(sourceText?: string | null) {
 
 function statusLabel(text: string): string {
   const value = text.toLowerCase()
-  if (/critical|крит|risk|риск|red/.test(value)) return 'Risk'
-  if (/warning|check|средн|тревог|вниман|amber/.test(value)) return 'Check'
-  if (/high confidence|высокая уверен|ok|good|норм|green/.test(value)) return 'High'
-  if (/medium confidence|предполож|info/.test(value)) return 'Info'
-  return 'Info'
+  if (/critical|крит|risk|риск|red/.test(value)) return 'Критично'
+  if (/warning|check|средн|тревог|вниман|amber/.test(value)) return 'Внимание'
+  if (/high confidence|высокая уверен|ok|good|норм|green/.test(value)) return 'Норма'
+  if (/medium confidence|предполож|info/.test(value)) return 'Инфо'
+  return 'Инфо'
 }
 
 function toneLabel(tone: Tone): string {
-  if (tone === 'red') return 'Risk'
-  if (tone === 'amber') return 'Check'
-  if (tone === 'green') return 'Good'
-  if (tone === 'blue' || tone === 'indigo' || tone === 'violet') return 'Info'
-  return 'Info'
+  if (tone === 'red') return 'Критично'
+  if (tone === 'amber') return 'Внимание'
+  if (tone === 'green') return 'Норма'
+  if (tone === 'blue' || tone === 'indigo' || tone === 'violet') return 'Инфо'
+  return 'Инфо'
 }
 
 function safeMetricValue(value: string, fallback = 'См. отчёт'): string {
@@ -410,7 +410,7 @@ function buildParsedReport(markdown: string, agentType: ReportPageData['agentTyp
     const bottleneck =
       extractLine(markdown, ['Главный financial bottleneck', 'Главный финансовый bottleneck', 'Главная финансовая проблема']) ||
       extractFirstSentence(markdown, ['главный финансовый bottleneck', 'главный диагноз'], 'Определено AI')
-    const status = extractLine(markdown, ['Статус']) || 'Generated report'
+    const status = extractLine(markdown, ['Статус']) || 'Сформированный отчёт'
     const firstStep = extractFirstSentence(markdown, ['рекомендации', 'план действий'], 'Сначала устранить главный финансовый разрыв.')
     const doNotTouch = extractFirstSentence(
       markdown,
@@ -424,8 +424,8 @@ function buildParsedReport(markdown: string, agentType: ReportPageData['agentTyp
         { label: 'Чистая прибыль', value: profit, helper: 'из P&L таблиц', tone: detectTone(profit), icon: TrendingUp },
         { label: 'Маржа', value: `${margin}%`, helper: 'текущий уровень', tone: margin < 10 ? 'red' : margin < 18 ? 'amber' : 'green', icon: Gauge },
         { label: 'Целевая маржа', value: `${targetMargin}%`, helper: 'ориентир отчёта', tone: 'green', icon: Target },
-        { label: 'Financial bottleneck', value: bottleneck, helper: 'главный разрыв', tone: 'red', icon: AlertTriangle },
-        { label: 'Статус', value: status, helper: 'Generated report', tone: detectTone(status), icon: CheckCircle },
+        { label: 'Финансовый bottleneck', value: bottleneck, helper: 'главный разрыв', tone: 'red', icon: AlertTriangle },
+        { label: 'Статус', value: status, helper: 'из отчёта', tone: detectTone(status), icon: CheckCircle },
       ],
       insights: [
         {
@@ -756,16 +756,16 @@ function FlowDiagram({ severity, accent }: { severity: number; accent: string })
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>
-            TOC flow
+            Теория ограничений
           </p>
           <h3 className="mt-1 text-sm font-semibold" style={{ color: TEXT }}>
-            Throughput → Constraint → Profit
+            Поток → Ограничение → Прибыль
           </h3>
         </div>
         <Activity className="h-5 w-5" style={{ color: accent }} />
       </div>
       <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2">
-        {['Throughput', 'Constraint', 'Profit'].map((label, index) => (
+        {['Throughput', 'Ограничение', 'Прибыль'].map((label, index) => (
           <div
             key={label}
             className="rounded-lg border px-3 py-3 text-center"
@@ -786,7 +786,7 @@ function FlowDiagram({ severity, accent }: { severity: number; accent: string })
       </div>
       <div className="mt-5">
         <div className="mb-1.5 flex justify-between text-xs">
-          <span style={{ color: TEXT2 }}>Bottleneck severity</span>
+          <span style={{ color: TEXT2 }}>Нагрузка bottleneck</span>
           <span className="font-semibold" style={{ color: '#B91C1C' }}>
             {Math.round(severity)}%
           </span>
@@ -805,7 +805,7 @@ function PriorityStack({ actions }: { actions: string[] }) {
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>
-            Priority stack
+            Приоритеты
           </p>
           <h3 className="mt-1 text-sm font-semibold" style={{ color: TEXT }}>
             Первые действия
@@ -861,14 +861,14 @@ function DashboardVisuals({
 }
 
 function KeyInsights({ items }: { items: InsightItem[] }) {
-  const pills = ['Critical', 'Action', 'Avoid']
+  const pills = ['Критично', 'Действие', 'Избегать']
 
   return (
     <section className="rounded-3xl border p-4 sm:p-5" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>
-            Executive view
+            Ключевые выводы
           </p>
           <h2 className="text-base font-semibold" style={{ color: TEXT }}>
             Главные выводы
@@ -993,7 +993,7 @@ function makeComponents(accent: string, accentBg: string) {
 function detectSectionType(heading: string): string | null {
   const h = cleanText(heading).toLowerCase()
   if (/диагностика\s+(входн|данных)/.test(h)) return 'diagnostics'
-  if (/executive|summary/.test(h)) return 'executive'
+  if (/executive|summary|резюме|краткое/.test(h)) return 'executive'
   if (/ключевые\s*(финансовые\s*)?метрики/.test(h)) return 'metrics'
   if (/финансовая\s+диагностика/.test(h)) return 'pnlflow'
   if (/анализ\s+расходов/.test(h)) return 'expenses'
@@ -1422,6 +1422,16 @@ function ExpenseBarsEnhanced({ content }: { content: string }) {
   const items = extractExpenseItems(content)
   if (items.length === 0) return null
   const sorted = [...items].sort((a, b) => b.pct - a.pct)
+  const total = sorted.reduce((s, i) => s + i.pct, 0)
+  const r = 52; const cx = 68; const cy = 68; const sw = 20
+  const circ = 2 * Math.PI * r
+  const DONUT_COLORS = ['#EF4444', '#F97316', '#F59E0B', '#3B82F6', '#6366F1', '#8B5CF6', '#06B6D4', '#10B981']
+  const segs = sorted.map((item, i) => {
+    const cumPct = sorted.slice(0, i).reduce((s, prev) => s + prev.pct, 0)
+    const da = (item.pct / total) * circ
+    const offset = circ * (1 - cumPct / total)
+    return { ...item, da, offset, color: DONUT_COLORS[i % DONUT_COLORS.length] }
+  })
   return (
     <div className="mb-4 rounded-xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -1431,23 +1441,36 @@ function ExpenseBarsEnhanced({ content }: { content: string }) {
         </div>
         <BarChart3 className="h-5 w-5" style={{ color: TEXT2 }} />
       </div>
-      <div className="space-y-2.5">
-        {sorted.map((item) => {
-          const colors = TONES[item.tone]
-          return (
-            <div key={item.label}>
-              <div className="mb-1 flex justify-between gap-2 text-xs">
-                <span className="font-medium" style={{ color: TEXT }}>{item.label.length > 30 ? item.label.slice(0, 27) + '…' : item.label}</span>
-                <span className="shrink-0 font-bold tabular-nums" style={{ color: colors.text }}>{item.pct}%</span>
-              </div>
-              <div className="h-2.5 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
-                <div className="h-full rounded-full" style={{ width: `${Math.min(item.pct, 100)}%`, background: colors.fill }} />
-              </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex shrink-0 justify-center">
+          <svg width="136" height="136" viewBox="0 0 136 136" aria-hidden="true">
+            {segs.map((seg) => (
+              <circle key={seg.label} cx={cx} cy={cy} r={r} fill="none"
+                stroke={seg.color} strokeWidth={sw}
+                strokeDasharray={`${seg.da.toFixed(2)} ${(circ - seg.da).toFixed(2)}`}
+                strokeDashoffset={seg.offset.toFixed(2)}
+                transform={`rotate(-90 ${cx} ${cy})`}
+              />
+            ))}
+            <text x={cx} y={cy - 4} textAnchor="middle" fontSize="14" fontWeight="700" fill="#0F172A">{total.toFixed(0)}%</text>
+            <text x={cx} y={cy + 12} textAnchor="middle" fontSize="8" fill="#94A3B8">от выручки</text>
+          </svg>
+        </div>
+        <div className="flex-1 space-y-2">
+          {segs.map((seg) => (
+            <div key={seg.label} className="flex items-center gap-2 text-xs">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: seg.color }} />
+              <span className="min-w-0 flex-1 truncate" style={{ color: TEXT }}>{seg.label.length > 28 ? seg.label.slice(0, 25) + '…' : seg.label}</span>
+              <span className="shrink-0 font-bold tabular-nums" style={{ color: '#0F172A' }}>{seg.pct}%</span>
             </div>
-          )
-        })}
+          ))}
+        </div>
       </div>
-      <p className="mt-2.5 text-[0.65rem]" style={{ color: TEXT3 }}>% от выручки · последний доступный период</p>
+      {total > 100 && (
+        <p className="mt-3 text-[0.65rem]" style={{ color: TEXT3 }}>
+          Сумма &gt; 100%: доли рассчитаны от выручки, а не от расходов. Превышение отражает операционный убыток.
+        </p>
+      )}
     </div>
   )
 }
@@ -1456,6 +1479,10 @@ function LossZoneBars({ content }: { content: string }) {
   const zones = extractLossZones(content)
   if (zones.length === 0) return null
   const maxAmount = Math.max(...zones.map((z) => z.amount ?? 0), 1)
+  const fmtAmount = (n: number) =>
+    n >= 1_000_000
+      ? `−${(n / 1_000_000).toFixed(2)} млн ₽/мес`
+      : `−${Math.round(n / 1_000)} тыс ₽/мес`
   return (
     <div className="mb-4 rounded-xl border p-4" style={{ background: '#FEF2F2', borderColor: '#FECACA' }}>
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -1465,18 +1492,18 @@ function LossZoneBars({ content }: { content: string }) {
         </div>
         <AlertTriangle className="h-5 w-5" style={{ color: '#DC2626' }} />
       </div>
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {zones.map((zone, i) => {
           const colors = TONES[zone.tone]
           const width = zone.amount ? (zone.amount / maxAmount) * 100 : (80 - i * 15)
           return (
             <div key={i}>
-              <div className="mb-1 flex items-start justify-between gap-2 text-xs">
-                <span className="font-semibold" style={{ color: '#7F1D1D' }}>
-                  {zone.zone.length > 30 ? zone.zone.slice(0, 27) + '…' : zone.zone}
+              <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+                <span className="font-semibold leading-snug" style={{ color: '#7F1D1D' }}>
+                  {zone.zone.length > 32 ? zone.zone.slice(0, 29) + '…' : zone.zone}
                 </span>
-                <span className="shrink-0 tabular-nums font-medium" style={{ color: colors.text }}>
-                  {zone.effect.length > 20 ? zone.effect.slice(0, 18) + '…' : zone.effect}
+                <span className="shrink-0 font-bold tabular-nums" style={{ color: '#B91C1C' }}>
+                  {zone.amount ? fmtAmount(zone.amount) : ''}
                 </span>
               </div>
               <div className="h-2.5 overflow-hidden rounded-full" style={{ background: '#FECACA' }}>
@@ -1605,6 +1632,58 @@ function DiagnosisFinal({ content }: { content: string }) {
   )
 }
 
+function RevenueTrendMini({ content }: { content: string }) {
+  const values = (() => {
+    const row = content.split('\n').find((l) => /^\|\s*Выручка\s*\|/i.test(l))
+    if (!row) return []
+    return row
+      .split('|')
+      .slice(1)
+      .map((cell) => { const m = cell.match(/(\d[\d.,]*)/) ; return m ? Number(m[1].replace(',', '.')) : NaN })
+      .filter((v) => Number.isFinite(v) && v > 0)
+  })()
+  if (values.length < 3) return null
+  const W = 560; const H = 72; const PX = 8; const PY = 8
+  const min = Math.min(...values); const max = Math.max(...values); const range = max - min || 1
+  const pts = values.map((v, i) => ({
+    x: PX + (i / (values.length - 1)) * (W - 2 * PX),
+    y: H - PY - ((v - min) / range) * (H - 2 * PY),
+  }))
+  const polyline = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const area = `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} ${pts.slice(1).map((p) => `L ${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} L ${pts[pts.length - 1].x.toFixed(1)},${H} L ${pts[0].x.toFixed(1)},${H} Z`
+  const minIdx = values.indexOf(min); const maxIdx = values.indexOf(max)
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border" style={{ background: CARD, borderColor: BORDER }}>
+      <div className="flex items-center justify-between px-4 pt-3">
+        <div>
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.1em]" style={{ color: TEXT3 }}>Динамика</p>
+          <h3 className="mt-0.5 text-sm font-semibold" style={{ color: TEXT }}>Выручка по месяцам, млн ₽</h3>
+        </div>
+        <TrendingUp className="h-4 w-4" style={{ color: PRIMARY_BLUE }} />
+      </div>
+      <div className="px-4 pb-2 pt-2">
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-20 w-full overflow-visible" role="img" aria-label="Динамика выручки">
+          <defs>
+            <linearGradient id="rev-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={PRIMARY_BLUE} stopOpacity="0.15" />
+              <stop offset="100%" stopColor={PRIMARY_BLUE} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={area} fill="url(#rev-fill)" />
+          <polyline points={polyline} fill="none" stroke={PRIMARY_BLUE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx={pts[minIdx].x.toFixed(1)} cy={pts[minIdx].y.toFixed(1)} r="4" fill="#EF4444" />
+          <circle cx={pts[maxIdx].x.toFixed(1)} cy={pts[maxIdx].y.toFixed(1)} r="4" fill="#10B981" />
+        </svg>
+        <div className="mt-1 flex justify-between text-[0.6rem]" style={{ color: TEXT3 }}>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-red-500" />Минимум</span>
+          <span>{values.length} мес. · ноябрь 2024 — апрель 2026</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Максимум</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SectionEnhancement({
   section,
   meta,
@@ -1618,7 +1697,12 @@ function SectionEnhancement({
     case 'diagnostics':
       return <DiagnosticsPanel content={section.content} />
     case 'executive':
-      return <SectionStatusBanner content={section.content} />
+      return (
+        <>
+          <SectionStatusBanner content={section.content} />
+          <RevenueTrendMini content={section.content} />
+        </>
+      )
     case 'metrics':
       return <MetricsKPIGrid content={section.content} />
     case 'pnlflow':
@@ -1662,7 +1746,22 @@ function SectionCard({
   index: number
 }) {
   const components = makeComponents(meta.accent, meta.accentBg)
-  const displayContent = sanitizeMarkdownForDisplay(section.content)
+  const sectionType = detectSectionType(section.heading)
+  const rawDisplay = sanitizeMarkdownForDisplay(section.content)
+  const displayContent = sectionType === 'executive'
+    ? (() => {
+        const lines = rawDisplay.split('\n')
+        const filtered: string[] = []
+        let skipSep = false
+        for (const line of lines) {
+          if (skipSep) { skipSep = false; if (/^\s*\|[\s:|-]+\|/.test(line)) continue }
+          skipSep = false
+          if (/^\|\s*Выручка\s*\|/i.test(line)) { skipSep = true; continue }
+          filtered.push(line)
+        }
+        return filtered.join('\n')
+      })()
+    : rawDisplay
 
   return (
     <section
@@ -1679,7 +1778,7 @@ function SectionCard({
             {cleanText(section.heading)}
           </h2>
           <span className="hidden rounded-full border px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.08em] sm:inline-flex" style={{ borderColor: meta.accentBorder, color: meta.accent, background: meta.accentBg }}>
-            Section
+            Раздел
           </span>
         </div>
         <div className="mt-3 h-0.5 w-16 rounded-full" style={{ background: meta.sectionBorderColor }} />
@@ -1727,7 +1826,7 @@ function SourceTableBlock({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
-              Source data
+              Исходные данные
             </p>
             <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>
               Данные, использованные для анализа
@@ -1768,7 +1867,15 @@ function SourceTableBlock({
               {visibleRows.map((row, rowIndex) => (
                 <tr key={rowIndex} className={rowIndex === 0 ? 'bg-slate-50 font-semibold' : undefined}>
                   {row.slice(0, 16).map((cell, cellIndex) => (
-                    <td key={`${rowIndex}-${cellIndex}`} className="max-w-[180px] truncate border-b border-r px-3 py-2" style={{ borderColor: BORDER_SOFT, color: TEXT }}>
+                    <td
+                      key={`${rowIndex}-${cellIndex}`}
+                      className={`max-w-[180px] truncate border-b border-r px-3 py-2${cellIndex === 0 ? ' sticky left-0 z-10' : ''}`}
+                      style={{
+                        borderColor: BORDER_SOFT,
+                        color: TEXT,
+                        background: cellIndex === 0 ? (rowIndex === 0 ? '#F8FAFC' : CARD) : undefined,
+                      }}
+                    >
                       {cell || '—'}
                     </td>
                   ))}
@@ -1805,7 +1912,7 @@ export default function ReportDisplay({
   const meta = AGENT_META[data.agentType] ?? AGENT_META.pnl
   const Icon = meta.icon
   const hasSections = sections.length > 0
-  const modelLabel = isDemo ? 'Demo / OpenRouter' : data.modelUsed || 'Model not recorded'
+  const modelLabel = isDemo ? 'Демо-отчёт' : data.modelUsed || 'Модель не записана'
 
   useEffect(() => {
     if (sections.length === 0) return
@@ -1849,7 +1956,7 @@ export default function ReportDisplay({
         <div className="print:hidden" style={{ background: '#EFF6FF', borderBottom: `1px solid #BFDBFE` }}>
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <p className="text-sm leading-snug" style={{ color: '#1E40AF' }}>
-              <span className="font-semibold">Демо-отчёт</span> · пример аналитики на вымышленных данных.
+              <span className="font-semibold">Демо-отчёт</span> · пример аналитики. Не является финансовым аудитом.
             </p>
             <Link
               href="/analyze"
@@ -1899,7 +2006,7 @@ export default function ReportDisplay({
                     <Icon className="h-3.5 w-3.5" />
                     {meta.badge}
                   </span>
-                  <StatusPill tone="blue">Generated report</StatusPill>
+                  <StatusPill tone="blue">Сформированный отчёт</StatusPill>
                 </div>
 
                 <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl print:text-black" style={{ color: TEXT }}>
@@ -1923,7 +2030,7 @@ export default function ReportDisplay({
                     {data.mode}
                   </span>
                   <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: TEXT3 }}>
-                    model_used: {modelLabel}
+                    Модель: {modelLabel}
                   </span>
                 </div>
               </div>
