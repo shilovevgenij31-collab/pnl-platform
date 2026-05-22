@@ -988,6 +988,670 @@ function makeComponents(accent: string, accentBg: string) {
   }
 }
 
+// ─── Section enhancement helpers ──────────────────────────────────────────────
+
+function detectSectionType(heading: string): string | null {
+  const h = cleanText(heading).toLowerCase()
+  if (/диагностика\s+(входн|данных)/.test(h)) return 'diagnostics'
+  if (/executive|summary/.test(h)) return 'executive'
+  if (/ключевые\s*(финансовые\s*)?метрики/.test(h)) return 'metrics'
+  if (/финансовая\s+диагностика/.test(h)) return 'pnlflow'
+  if (/анализ\s+расходов/.test(h)) return 'expenses'
+  if (/теряется\s+прибыль/.test(h)) return 'lossmap'
+  if (/аномали/.test(h)) return 'anomalies'
+  if (/bottleneck/.test(h) && !/план|рекоменд/.test(h)) return 'bottleneck'
+  if (/точка\s+безубыточности/.test(h)) return 'breakeven'
+  if (/сценари/.test(h)) return 'scenarios'
+  if (/не нужно.*(оптимизир|трог)/.test(h)) return 'nottodo'
+  if (/рекоменд/.test(h)) return 'recommendations'
+  if (/план\s+действий/.test(h)) return 'plan'
+  if (/главный\s+диагноз/.test(h)) return 'diagnosis'
+  if (/ограничения\s+анализа/.test(h)) return 'limitations'
+  return null
+}
+
+function extractBullets(content: string, max = 4): string[] {
+  return content
+    .split('\n')
+    .filter((l) => /^\s*[-•]\s+\S/.test(l))
+    .map((l) => cleanText(l.replace(/^\s*[-•]\s+/, '')).replace(/\*\*/g, ''))
+    .filter((l) => l.length > 10)
+    .slice(0, max)
+}
+
+function extractTableDataRows(content: string): string[][] {
+  const lines = content.split('\n').filter((l) => /^\s*\|.+\|/.test(l))
+  const sepIdx = lines.findIndex((l) => /^\s*\|[\s\-:|]+\|/.test(l))
+  const dataLines = sepIdx >= 0 ? lines.slice(sepIdx + 1) : lines.slice(1)
+  return dataLines
+    .map((l) => l.split('|').filter(Boolean).map(cleanText))
+    .filter((row) => row.some(Boolean))
+}
+
+function extractStatusLine(content: string): { text: string; tone: Tone } | null {
+  const line = content.split('\n').find((l) => /\*\*Статус:\*\*|\*\*Status:\*\*/i.test(l))
+  if (!line) return null
+  const text = cleanText(line.replace(/.*\*\*Статус:\*\*\s*/i, '').replace(/.*\*\*Status:\*\*\s*/i, ''))
+  if (text.length < 3) return null
+  return { text: text.length > 100 ? text.slice(0, 97) + '...' : text, tone: detectTone(text) }
+}
+
+function extractTimeline(content: string): { period: string; items: string[] }[] {
+  const result: { period: string; items: string[] }[] = []
+  let current: { period: string; items: string[] } | null = null
+  for (const line of content.split('\n')) {
+    const cleaned = cleanText(line)
+    const pm = cleaned.match(/\*?\*?(\d+\s+дн[ей\s][^:—*]*)/i) ?? cleaned.match(/(\d+[-–]\d+\s+дн[ей][^:—*]*)/i)
+    if (pm) {
+      if (current) result.push(current)
+      current = { period: pm[1].trim().replace(/[*—:]+$/, '').trim(), items: [] }
+    } else if (current && /^\s*\d+\.\s+/.test(line)) {
+      const item = cleanText(line.replace(/^\s*\d+\.\s+/, ''))
+      if (item) current.items.push(item.length > 72 ? item.slice(0, 69) + '...' : item)
+    }
+  }
+  if (current) result.push(current)
+  return result.filter((s) => s.items.length > 0).slice(0, 3)
+}
+
+function extractConfidenceLine(content: string): { text: string; tone: Tone } | null {
+  const line = content.split('\n').find((l) => /уровень уверенности|confidence/i.test(l))
+  if (!line) return null
+  const text = cleanText(line.replace(/.*уровень уверенности\s*:?\s*/i, '').replace(/.*confidence\s*:?\s*/i, ''))
+  if (!text) return null
+  return { text: text.length > 48 ? text.slice(0, 45) + '...' : text, tone: detectTone(text) }
+}
+
+function extractBoldHeadline(content: string): string | null {
+  const lines = content.split('\n')
+  const found = lines.find((l) => /\*\*[^*]{12,}\*\*/.test(l) && !/^\|/.test(l))
+  if (!found) return null
+  const text = cleanText(found.replace(/\*\*/g, '').replace(/⚠️|⚠|🎯/g, '').trim())
+  return text.length > 8 ? text : null
+}
+
+function extractExpenseItems(content: string): { label: string; pct: number; tone: Tone }[] {
+  const rows = extractTableDataRows(content)
+  return rows
+    .filter((row) => row.length >= 3)
+    .map((row) => {
+      const label = cleanText(row[0]).replace(/🔴|🟡|🟢|✅|⚠️/g, '').replace(/\*\*/g, '').trim()
+      const pctCell = row.find((cell) => /\d+(?:[.,]\d+)?%/.test(cell))
+      const match = pctCell?.match(/(\d+(?:[.,]\d+)?)%/)
+      const pct = match ? parseFloat(match[1].replace(',', '.')) : null
+      if (!label || pct === null || pct <= 0 || pct > 100) return null
+      const tone: Tone = pct > 45 ? 'red' : pct > 25 ? 'amber' : 'blue'
+      return { label, pct, tone }
+    })
+    .filter(Boolean)
+    .slice(0, 7) as { label: string; pct: number; tone: Tone }[]
+}
+
+function extractLossZones(content: string): { zone: string; effect: string; amount: number | null; tone: Tone }[] {
+  const rows = extractTableDataRows(content)
+  return rows
+    .filter((row) => row.length >= 2)
+    .map((row) => {
+      const raw = row[0] ?? ''
+      const tone: Tone = raw.includes('🔴') || /крит/i.test(raw) ? 'red' : 'amber'
+      const zone = cleanText(raw).replace(/🔴|🟡|🟢|\*\*/g, '').trim()
+      const effect = cleanText(row[2] ?? row[1] ?? '')
+      const amountMatch = effect.match(/[-−]?\s*(\d[\d\s]{0,8})(?:\s*(?:тыс|млн|k|K)\s*)?₽/)
+      let amount: number | null = null
+      if (amountMatch) {
+        const raw = amountMatch[1].replace(/\s/g, '')
+        const n = parseFloat(raw)
+        if (Number.isFinite(n) && n > 0) amount = n
+      }
+      return { zone, effect, amount, tone }
+    })
+    .filter((item) => item.zone && item.zone.length > 2)
+    .slice(0, 5)
+}
+
+function extractBreakevenNums(content: string): { breakeven: number; revenue: number } | null {
+  const parseNum = (s: string) => {
+    const n = parseFloat(s.replace(/[\s ]/g, '').replace(',', '.'))
+    return Number.isFinite(n) ? n : null
+  }
+  const beMatch = content.match(/точка\s+безубыточности[^=\n]*[=≈]\s*([\d\s .,]+)\s*₽/i)
+  const revPatterns = [
+    /текущ[а-я]+\s+выручка[^0-9₽]*?([\d\s .,]+)\s*₽/i,
+    /выручка[^0-9₽\n]*?([\d\s .,]+)\s*₽.*текущ/i,
+    /(?:март|февр|янв|апр|май|июн|июл|авг|сен|окт|ноя|дек)[^0-9₽\n]*?([\d\s .,]+)\s*₽/i,
+  ]
+  const breakeven = beMatch ? parseNum(beMatch[1]) : null
+  let revenue: number | null = null
+  for (const pat of revPatterns) {
+    const m = content.match(pat)
+    if (m) { revenue = parseNum(m[1]); if (revenue) break }
+  }
+  if (!breakeven || !revenue) return null
+  return { breakeven, revenue }
+}
+
+function extractScenarioRows(content: string): { name: string; what: string; effect: string; risk: string }[] {
+  const rows = extractTableDataRows(content)
+  return rows
+    .filter((row) => row.length >= 3)
+    .map((row) => ({
+      name: cleanText(row[0]).replace(/\*\*/g, '').trim(),
+      what: cleanText(row[1] ?? ''),
+      effect: cleanText(row[2] ?? ''),
+      risk: cleanText(row[3] ?? ''),
+    }))
+    .filter((item) => item.name && item.name.length > 2 && !/^сценарий\s+что/i.test(item.name))
+    .slice(0, 4)
+}
+
+function extractMetricsRows(content: string): { metric: string; value: string; tone: Tone }[] {
+  const rows = extractTableDataRows(content)
+  return rows
+    .filter((row) => row.length >= 2)
+    .map((row) => {
+      const metric = cleanText(row[0]).replace(/\*\*/g, '').trim()
+      const lastValueIdx = Math.max(1, row.length - 2)
+      const value = cleanText(row[lastValueIdx] || row[1] || '')
+      const tone: Tone = /🔴|критич|риск/i.test(row.join(' ')) ? 'red'
+        : /🟡|тревог|вниман/i.test(row.join(' ')) ? 'amber'
+        : /🟢|норм|хорош/i.test(row.join(' ')) ? 'green'
+        : 'blue'
+      return { metric, value, tone }
+    })
+    .filter((item) => item.metric && item.value && item.metric.length > 3 && item.value.length > 0)
+    .slice(0, 6)
+}
+
+// ─── Section visual components ─────────────────────────────────────────────────
+
+function SectionStatusBanner({ content }: { content: string }) {
+  const status = extractStatusLine(content)
+  if (!status) return null
+  const colors = TONES[status.tone]
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded-xl border p-4" style={{ background: colors.bg, borderColor: colors.border }}>
+      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: colors.fill }} />
+      <p className="text-sm font-medium leading-snug" style={{ color: colors.text }}>{status.text}</p>
+    </div>
+  )
+}
+
+function DiagnosticsPanel({ content }: { content: string }) {
+  const lines = content.split('\n').filter((l) => /^\s*[-•]\s+\*\*/.test(l))
+  const items = lines
+    .map((l) => {
+      const match = l.match(/\*\*([^*]+)\*\*\s*:?\s*(.*)/)
+      if (!match) return null
+      return { label: cleanText(match[1]), value: cleanText(match[2]) }
+    })
+    .filter(Boolean) as { label: string; value: string }[]
+  if (items.length === 0) return null
+  return (
+    <div className="mb-4 grid gap-3 rounded-xl border p-4 sm:grid-cols-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+      {items.slice(0, 4).map((item, i) => (
+        <div key={i}>
+          <p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.1em]" style={{ color: TEXT3 }}>{item.label}</p>
+          <p className="text-xs leading-snug" style={{ color: TEXT }}>
+            {item.value.length > 110 ? item.value.slice(0, 107) + '...' : item.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AnomalyCards({ content }: { content: string }) {
+  const bullets = extractBullets(content, 4)
+  if (bullets.length === 0) return null
+  return (
+    <div className="mb-4 grid gap-2 sm:grid-cols-2">
+      {bullets.map((b, i) => (
+        <div key={i} className="flex items-start gap-2.5 rounded-xl border p-3" style={{ background: '#FEF2F2', borderColor: '#FECACA' }}>
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: '#DC2626' }} />
+          <p className="text-xs leading-snug" style={{ color: '#7F1D1D' }}>{b}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BottleneckHighlight({ content, accent }: { content: string; accent: string }) {
+  const confidence = extractConfidenceLine(content)
+  const headline = extractBoldHeadline(content)
+  if (!headline) return null
+  const conTone: Tone = confidence ? detectTone(confidence.text) : 'amber'
+  return (
+    <div className="mb-4 overflow-hidden rounded-2xl border-2" style={{ borderColor: '#FECACA', background: '#FEF2F2' }}>
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.1em]" style={{ color: '#7F1D1D' }}>
+            Главный bottleneck
+          </p>
+          <p className="text-sm font-semibold leading-snug" style={{ color: '#991B1B' }}>{headline}</p>
+        </div>
+        {confidence && (
+          <StatusPill tone={conTone}>{confidence.text}</StatusPill>
+        )}
+      </div>
+      <div className="h-1 w-full" style={{ background: `linear-gradient(to right, #EF4444, ${accent})` }} />
+    </div>
+  )
+}
+
+function NotToDoCards({ content }: { content: string }) {
+  const rows = extractTableDataRows(content).slice(0, 4)
+  if (rows.length === 0) return null
+  return (
+    <div className="mb-4 grid gap-2 sm:grid-cols-2">
+      {rows.map((row, i) => (
+        <div key={i} className="flex items-start gap-2.5 rounded-xl border p-3" style={{ background: '#FFFBEB', borderColor: '#FDE68A' }}>
+          <Ban className="mt-0.5 h-4 w-4 shrink-0" style={{ color: '#D97706' }} />
+          <div>
+            <p className="text-xs font-semibold" style={{ color: TEXT }}>{row[0] ?? '—'}</p>
+            {row[1] && (
+              <p className="mt-0.5 text-xs leading-snug" style={{ color: TEXT2 }}>
+                {row[1].length > 80 ? row[1].slice(0, 77) + '...' : row[1]}
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ActionPriorityCards({ content }: { content: string }) {
+  const rows = extractTableDataRows(content).slice(0, 5)
+  if (rows.length === 0) return null
+  return (
+    <div className="mb-4 space-y-2">
+      {rows.map((row, i) => {
+        const priority = (row[0] ?? '').replace(/\*\*/g, '').trim()
+        const action = row[1] ?? ''
+        const effect = row[3] ?? ''
+        return (
+          <div key={i} className="flex items-start gap-3 rounded-xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
+            <span
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+              style={{ background: i === 0 ? '#FEF3C7' : '#EEF2FF', color: i === 0 ? '#92400E' : '#3730A3' }}
+            >
+              {priority || String(i + 1)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold" style={{ color: TEXT }}>
+                {action.length > 80 ? action.slice(0, 77) + '...' : action}
+              </p>
+              {effect && (
+                <p className="mt-0.5 text-xs" style={{ color: TEXT2 }}>
+                  {effect.length > 60 ? effect.slice(0, 57) + '...' : effect}
+                </p>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function TimelineStrips({ content }: { content: string }) {
+  const sections = extractTimeline(content)
+  if (sections.length === 0) return null
+  const colors = [
+    { bg: '#FEF3C7', border: '#FDE68A', dot: '#F59E0B', text: '#92400E' },
+    { bg: '#EFF6FF', border: '#BFDBFE', dot: '#3B82F6', text: '#1E40AF' },
+    { bg: '#F0FDF4', border: '#BBF7D0', dot: '#10B981', text: '#065F46' },
+  ]
+  return (
+    <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      {sections.map((section, i) => {
+        const c = colors[i] ?? colors[0]
+        return (
+          <div key={i} className="rounded-xl border p-3" style={{ background: c.bg, borderColor: c.border }}>
+            <p className="mb-2 flex items-center gap-2 text-xs font-semibold" style={{ color: c.text }}>
+              <span className="h-2 w-2 rounded-full" style={{ background: c.dot }} />
+              {section.period}
+            </p>
+            <ul className="space-y-1.5">
+              {section.items.slice(0, 3).map((item, j) => (
+                <li key={j} className="text-xs leading-snug" style={{ color: c.text }}>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function LimitationsPanel({ content }: { content: string }) {
+  const bullets = extractBullets(content, 5)
+  if (bullets.length === 0) return null
+  return (
+    <div className="mb-4 rounded-xl border p-4" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+      <div className="mb-3 flex items-center gap-2">
+        <FileText className="h-4 w-4" style={{ color: TEXT2 }} />
+        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.1em]" style={{ color: TEXT3 }}>Ограничения данных</p>
+      </div>
+      <ul className="space-y-1.5">
+        {bullets.map((b, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs leading-snug" style={{ color: TEXT2 }}>
+            <span className="mt-0.5 shrink-0 select-none">·</span>
+            {b}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function MetricsKPIGrid({ content }: { content: string }) {
+  const items = extractMetricsRows(content)
+  if (items.length < 3) return null
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {items.map((item, i) => {
+        const colors = TONES[item.tone]
+        const isFirst = i === 0
+        return (
+          <div
+            key={item.metric}
+            className="min-h-[72px] rounded-xl border p-3"
+            style={{
+              background: isFirst ? `linear-gradient(135deg, ${PRIMARY_BLUE}, ${INDIGO})` : colors.bg,
+              borderColor: isFirst ? '#3B82F6' : colors.border,
+            }}
+          >
+            <p className="mb-1.5 text-[0.6rem] font-semibold uppercase tracking-[0.1em]" style={{ color: isFirst ? 'rgba(255,255,255,0.72)' : TEXT3 }}>
+              {item.metric.length > 28 ? item.metric.slice(0, 25) + '…' : item.metric}
+            </p>
+            <p className="text-sm font-bold tabular-nums leading-tight" style={{ color: isFirst ? '#FFF' : TEXT }}>
+              {safeMetricValue(item.value, '—')}
+            </p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function PnlDiagnosticCards({ content }: { content: string }) {
+  const lowerContent = content.toLowerCase()
+  const normalIdx = lowerContent.indexOf('что нормально')
+  const warnIdx = lowerContent.indexOf('что вызывает')
+  const normalSection = normalIdx >= 0 ? content.slice(normalIdx, warnIdx >= 0 ? warnIdx : undefined) : ''
+  const warnSection = warnIdx >= 0 ? content.slice(warnIdx) : ''
+  const normalBullets = extractBullets(normalSection, 4)
+  const warnBullets = extractBullets(warnSection, 4)
+  if (normalBullets.length === 0 && warnBullets.length === 0) return null
+  return (
+    <div className="mb-4 grid gap-3 sm:grid-cols-2">
+      {normalBullets.length > 0 && (
+        <div className="rounded-xl border p-3" style={{ background: '#F0FDF4', borderColor: '#BBF7D0' }}>
+          <p className="mb-2 text-xs font-semibold" style={{ color: '#047857' }}>Что нормально</p>
+          <ul className="space-y-1.5">
+            {normalBullets.map((b, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-xs leading-snug" style={{ color: '#065F46' }}>
+                <span className="mt-[0.4rem] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#10B981' }} />
+                {b}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {warnBullets.length > 0 && (
+        <div className="rounded-xl border p-3" style={{ background: '#FFFBEB', borderColor: '#FDE68A' }}>
+          <p className="mb-2 text-xs font-semibold" style={{ color: '#B45309' }}>Что вызывает тревогу</p>
+          <ul className="space-y-1.5">
+            {warnBullets.map((b, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-xs leading-snug" style={{ color: '#92400E' }}>
+                <span className="mt-[0.4rem] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#F59E0B' }} />
+                {b}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ExpenseBarsEnhanced({ content }: { content: string }) {
+  const items = extractExpenseItems(content)
+  if (items.length === 0) return null
+  const sorted = [...items].sort((a, b) => b.pct - a.pct)
+  return (
+    <div className="mb-4 rounded-xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.1em]" style={{ color: TEXT3 }}>Структура расходов</p>
+          <h3 className="mt-0.5 text-sm font-semibold" style={{ color: TEXT }}>По категориям (% от выручки)</h3>
+        </div>
+        <BarChart3 className="h-5 w-5" style={{ color: TEXT2 }} />
+      </div>
+      <div className="space-y-2.5">
+        {sorted.map((item) => {
+          const colors = TONES[item.tone]
+          return (
+            <div key={item.label}>
+              <div className="mb-1 flex justify-between gap-2 text-xs">
+                <span className="font-medium" style={{ color: TEXT }}>{item.label.length > 30 ? item.label.slice(0, 27) + '…' : item.label}</span>
+                <span className="shrink-0 font-bold tabular-nums" style={{ color: colors.text }}>{item.pct}%</span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
+                <div className="h-full rounded-full" style={{ width: `${Math.min(item.pct, 100)}%`, background: colors.fill }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <p className="mt-2.5 text-[0.65rem]" style={{ color: TEXT3 }}>% от выручки · последний доступный период</p>
+    </div>
+  )
+}
+
+function LossZoneBars({ content }: { content: string }) {
+  const zones = extractLossZones(content)
+  if (zones.length === 0) return null
+  const maxAmount = Math.max(...zones.map((z) => z.amount ?? 0), 1)
+  return (
+    <div className="mb-4 rounded-xl border p-4" style={{ background: '#FEF2F2', borderColor: '#FECACA' }}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.1em]" style={{ color: '#7F1D1D' }}>Зоны потерь</p>
+          <h3 className="mt-0.5 text-sm font-semibold" style={{ color: '#991B1B' }}>Ранжировано по серьёзности</h3>
+        </div>
+        <AlertTriangle className="h-5 w-5" style={{ color: '#DC2626' }} />
+      </div>
+      <div className="space-y-2.5">
+        {zones.map((zone, i) => {
+          const colors = TONES[zone.tone]
+          const width = zone.amount ? (zone.amount / maxAmount) * 100 : (80 - i * 15)
+          return (
+            <div key={i}>
+              <div className="mb-1 flex items-start justify-between gap-2 text-xs">
+                <span className="font-semibold" style={{ color: '#7F1D1D' }}>
+                  {zone.zone.length > 30 ? zone.zone.slice(0, 27) + '…' : zone.zone}
+                </span>
+                <span className="shrink-0 tabular-nums font-medium" style={{ color: colors.text }}>
+                  {zone.effect.length > 20 ? zone.effect.slice(0, 18) + '…' : zone.effect}
+                </span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full" style={{ background: '#FECACA' }}>
+                <div className="h-full rounded-full" style={{ width: `${Math.min(Math.max(width, 8), 100)}%`, background: colors.fill }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function BreakevenGauge({ content }: { content: string }) {
+  const data = extractBreakevenNums(content)
+  if (!data) return null
+  const { breakeven, revenue } = data
+  const progressPct = Math.min((revenue / breakeven) * 100, 200)
+  const safetyMargin = (((revenue - breakeven) / revenue) * 100).toFixed(1)
+  const tone: Tone = progressPct < 115 ? 'red' : progressPct < 140 ? 'amber' : 'green'
+  const colors = TONES[tone]
+  const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} млн ₽` : `${Math.round(n / 1_000)} тыс ₽`
+  return (
+    <div className="mb-4 rounded-xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.1em]" style={{ color: TEXT3 }}>Запас прочности</p>
+          <h3 className="mt-0.5 text-sm font-semibold" style={{ color: TEXT }}>Выручка vs Безубыточность</h3>
+        </div>
+        <Gauge className="h-5 w-5" style={{ color: TEXT2 }} />
+      </div>
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <div className="rounded-lg p-2.5" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+          <p className="text-[0.6rem] font-semibold uppercase tracking-wide" style={{ color: '#1E40AF' }}>Текущая выручка</p>
+          <p className="mt-1 text-sm font-bold" style={{ color: '#1E3A8A' }}>{fmtM(revenue)}</p>
+        </div>
+        <div className="rounded-lg p-2.5" style={{ background: '#F8FAFC', border: `1px solid ${BORDER}` }}>
+          <p className="text-[0.6rem] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Безубыточность</p>
+          <p className="mt-1 text-sm font-bold" style={{ color: TEXT }}>{fmtM(breakeven)}</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span style={{ color: TEXT2 }}>Запас прочности</span>
+          <span className="font-bold tabular-nums" style={{ color: colors.text }}>{safetyMargin}%</span>
+        </div>
+        <div className="relative h-3 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, progressPct / 2)}%`, background: colors.fill }} />
+        </div>
+        <div className="flex justify-between text-[0.6rem]" style={{ color: TEXT3 }}>
+          <span>0</span>
+          <span>Безубыт.</span>
+          <span>×2</span>
+        </div>
+      </div>
+      <div className="mt-2">
+        <StatusPill tone={tone}>{tone === 'green' ? 'Комфортный запас' : tone === 'amber' ? 'Умеренный запас' : 'Низкий запас прочности'}</StatusPill>
+      </div>
+    </div>
+  )
+}
+
+function ScenarioCards({ content }: { content: string }) {
+  const scenarios = extractScenarioRows(content)
+  if (scenarios.length === 0) return null
+  const palettes: Tone[] = ['blue', 'indigo', 'amber', 'green']
+  return (
+    <div className="mb-4 grid gap-2 sm:grid-cols-2">
+      {scenarios.map((s, i) => {
+        const tone = palettes[i % palettes.length]
+        const colors = TONES[tone]
+        return (
+          <div key={i} className="rounded-xl border p-3" style={{ background: colors.bg, borderColor: colors.border }}>
+            <p className="text-xs font-semibold" style={{ color: colors.text }}>
+              {s.name.length > 44 ? s.name.slice(0, 41) + '…' : s.name}
+            </p>
+            {s.what && <p className="mt-1 text-xs leading-snug" style={{ color: TEXT2 }}>{s.what.length > 52 ? s.what.slice(0, 49) + '…' : s.what}</p>}
+            {s.effect && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[0.6rem] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Эффект</span>
+                <span className="text-xs font-semibold" style={{ color: '#047857' }}>{s.effect.length > 30 ? s.effect.slice(0, 27) + '…' : s.effect}</span>
+              </div>
+            )}
+            {s.risk && (
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="text-[0.6rem] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Риск</span>
+                <span className="text-xs" style={{ color: colors.text }}>{s.risk.length > 24 ? s.risk.slice(0, 21) + '…' : s.risk}</span>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DiagnosisFinal({ content }: { content: string }) {
+  const lines: { prefix: string; tone: Tone; icon: typeof AlertTriangle }[] = [
+    { prefix: 'Главная финансовая проблема', tone: 'red', icon: AlertTriangle },
+    { prefix: 'Первое действие', tone: 'blue', icon: Zap },
+    { prefix: 'Целевой показатель', tone: 'green', icon: Target },
+  ]
+  const items = lines
+    .map((l) => ({ ...l, value: extractLine(content, [l.prefix]) }))
+    .filter((item) => item.value)
+  if (items.length === 0) return null
+  return (
+    <div className="mb-4 space-y-2">
+      {items.map((item, i) => {
+        const colors = TONES[item.tone]
+        return (
+          <div key={i} className="flex items-start gap-3 rounded-xl border p-3.5" style={{ background: colors.bg, borderColor: colors.border }}>
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: CARD, border: `1px solid ${colors.border}` }}>
+              <item.icon className="h-3.5 w-3.5" style={{ color: colors.text }} />
+            </div>
+            <div>
+              <p className="text-[0.62rem] font-semibold uppercase tracking-[0.1em]" style={{ color: colors.text }}>{item.prefix}</p>
+              <p className="mt-0.5 text-xs font-medium leading-snug" style={{ color: TEXT }}>
+                {(item.value!.length > 112 ? item.value!.slice(0, 109) + '...' : item.value)!}
+              </p>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SectionEnhancement({
+  section,
+  meta,
+}: {
+  section: ReportSection
+  meta: (typeof AGENT_META)[keyof typeof AGENT_META]
+}) {
+  const type = detectSectionType(section.heading)
+  if (!type) return null
+  switch (type) {
+    case 'diagnostics':
+      return <DiagnosticsPanel content={section.content} />
+    case 'executive':
+      return <SectionStatusBanner content={section.content} />
+    case 'metrics':
+      return <MetricsKPIGrid content={section.content} />
+    case 'pnlflow':
+      return <PnlDiagnosticCards content={section.content} />
+    case 'expenses':
+      return <ExpenseBarsEnhanced content={section.content} />
+    case 'lossmap':
+      return <LossZoneBars content={section.content} />
+    case 'anomalies':
+      return <AnomalyCards content={section.content} />
+    case 'bottleneck':
+      return <BottleneckHighlight content={section.content} accent={meta.accent} />
+    case 'breakeven':
+      return <BreakevenGauge content={section.content} />
+    case 'scenarios':
+      return <ScenarioCards content={section.content} />
+    case 'nottodo':
+      return <NotToDoCards content={section.content} />
+    case 'recommendations':
+      return <ActionPriorityCards content={section.content} />
+    case 'plan':
+      return <TimelineStrips content={section.content} />
+    case 'diagnosis':
+      return <DiagnosisFinal content={section.content} />
+    case 'limitations':
+      return <LimitationsPanel content={section.content} />
+    default:
+      return null
+  }
+}
+
+// ─── SectionCard ──────────────────────────────────────────────────────────────
+
 function SectionCard({
   section,
   meta,
@@ -1021,6 +1685,7 @@ function SectionCard({
         <div className="mt-3 h-0.5 w-16 rounded-full" style={{ background: meta.sectionBorderColor }} />
       </div>
       <div className="px-4 py-3.5 sm:px-5">
+        <SectionEnhancement section={section} meta={meta} />
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
           {displayContent}
         </ReactMarkdown>

@@ -1,17 +1,18 @@
 import ReportDisplay from '@/app/report/[id]/ReportDisplay'
-import { demoPnlReport } from '@/lib/demoReports'
+import { demoPnlReport, demoPnlSourceText } from '@/lib/demoReports'
 
 export const metadata = {
-  title: 'Пример P&L-отчёта — Перезагрузка прибыльности',
+  title: 'Демо P&L-отчёта: АгентПро — Перезагрузка прибыльности',
 }
 
 const demoData = {
   id: 'demo-pnl',
   report: demoPnlReport,
-  company: 'ТехКонсалт (демо)',
-  date: '21 мая 2026',
+  company: 'АгентПро (демо)',
+  date: '22 мая 2025',
   mode: 'P&L Analysis',
   agentType: 'pnl' as const,
+  sourceText: demoPnlSourceText,
 }
 
 export default function DemoPnlPage() {
