@@ -101,15 +101,33 @@ const MAX_NORMALIZED_CHARS = 75_000
 const PREVIEW_ROWS = 20
 const PREVIEW_COLS = 15
 
-const REVENUE_KEYWORDS = ['выручка', 'доход', 'продажи', 'оборот', 'агентское вознаграждение']
-const EXPENSE_KEYWORDS = ['расходы', 'себестоимость', 'фот', 'зарплата', 'маркетинг', 'аренда', 'подрядчики']
-const PROFIT_KEYWORDS = ['прибыль', 'маржа', 'рентабельность']
+const REVENUE_KEYWORDS = [
+  'выручка', 'доход', 'продажи', 'оборот', 'реализация',
+  'общая выручка', 'выручка с ндс', 'агентское вознаграждение',
+  'revenue', 'sales', 'income', 'gross revenue', 'net revenue',
+]
+const EXPENSE_KEYWORDS = [
+  'расходы', 'расход', 'себестоимость', 'затраты',
+  'переменные расходы', 'постоянные расходы',
+  'фот', 'зарплата', 'маркетинг', 'аренда', 'подрядчики',
+  'сырье', 'материалы', 'упаковка', 'реклама', 'коммунальные',
+  'cogs', 'cost', 'expense', 'payroll', 'salary',
+  'marketing', 'ads', 'rent', 'contractors', 'opex', 'operating',
+  'роялти', 'амортизация', 'налоги', 'кредиты',
+]
+const PROFIT_KEYWORDS = [
+  'прибыль', 'чистая прибыль', 'валовая прибыль', 'маржинальная прибыль',
+  'операционная прибыль', 'ebitda',
+  'маржа', 'маржинальность', 'рентабельность',
+  'profit', 'net profit', 'gross profit', 'operating profit', 'margin',
+]
 const FORMULA_ERRORS = ['#VALUE!', '#DIV/0!', '#REF!', '#N/A', '#NAME?']
 const PERIOD_KEYWORDS = [
   'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
   'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
   'янв', 'фев', 'мар', 'апр', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
-  'month', 'месяц', 'итого',
+  'q1', 'q2', 'q3', 'q4', '2024', '2025', '2026',
+  'month', 'месяц', 'итого', 'квартал', 'период', 'quarter', 'period',
 ]
 
 type CellValue = string | number | boolean | Date | null | undefined
@@ -367,6 +385,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
   const [loading, setLoading] = useState(false)
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [errorRequestId, setErrorRequestId] = useState<string | null>(null)
   const [savedLocally, setSavedLocally] = useState(false)
   const [hasPnlDraft, setHasPnlDraft] = useState(false)
   const [hasGoldrattDraft, setHasGoldrattDraft] = useState(false)
@@ -557,6 +576,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
 
     setLoading(true)
     setError(null)
+    setErrorRequestId(null)
     setSavedLocally(false)
     setStepIndex(0)
 
@@ -588,11 +608,15 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
           mode: agent === 'pnl' ? 'P&L Analysis' : 'Goldratt / TOC',
         })
         setSavedLocally(true)
+        setErrorRequestId(data.requestId || null)
         setError(data.error)
         return
       }
 
-      if (!res.ok) throw new Error(data.error || 'Ошибка анализа')
+      if (!res.ok) {
+        setErrorRequestId(data.requestId || null)
+        throw new Error(data.error || 'Ошибка анализа')
+      }
       router.push(`/report/${data.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Произошла ошибка. Попробуйте снова.')
@@ -804,6 +828,11 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
                   <p className="text-sm" style={{ color: savedLocally ? '#92400E' : '#991B1B' }}>
                     {error}
                   </p>
+                  {errorRequestId && (
+                    <p className="text-xs font-mono mt-1" style={{ color: '#94A3B8' }}>
+                      ID ошибки: {errorRequestId}
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-3">
                     {error.includes('Файл не подходит') && (
                       <>

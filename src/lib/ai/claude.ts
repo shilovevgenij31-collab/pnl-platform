@@ -27,7 +27,7 @@ export class ClaudeProvider implements AIProvider {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 4000,
+          max_tokens: 8000,
           temperature: 0.3,
           ...(systemMessage ? { system: systemMessage.content } : {}),
           messages: conversationMessages.map((m) => ({
