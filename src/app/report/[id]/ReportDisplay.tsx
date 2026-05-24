@@ -195,22 +195,23 @@ function isGarbageText(value: string): boolean {
 
 function sanitizeMarkdownForDisplay(markdown: string): string {
   return markdown
+    .replace(/ГЛАВНЫЙ ФИНАНСОВЫЙ BOTTLENECK/gi, 'ГЛАВНОЕ ОГРАНИЧЕНИЕ ПРИБЫЛИ')
     .replace(/Executive Summary/gi, 'Краткий итог')
-    .replace(/Bottleneck/gi, 'Главное ограничение прибыли')
+    .replace(/\bbottleneck\b/gi, 'ограничение прибыли')
     .replace(/Confidence/gi, 'Основание вывода')
     .replace(/Critical/gi, 'Критично')
     .replace(/High/gi, 'Высокая')
     .replace(/Medium/gi, 'Средняя')
     .replace(/Low/gi, 'Низкая')
     .replace(/Status/gi, 'Оценка ситуации')
-    .replace(/unit economics/gi, '\u044D\u043A\u043E\u043D\u043E\u043C\u0438\u043A\u0430 \u043D\u0430 \u043A\u043B\u0438\u0435\u043D\u0442\u0430 / \u0430\u0431\u043E\u043D\u0435\u043C\u0435\u043D\u0442')
+    .replace(/unit economics/gi, 'экономика по клиенту / абонементу')
     .replace(/\p{Emoji_Presentation}/gu, '')
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '')
 }
 
 function ruSanitize(value: string): string {
   return value
-    .replace(/unit economics/gi, '\u044D\u043A\u043E\u043D\u043E\u043C\u0438\u043A\u0430 \u043D\u0430 \u043A\u043B\u0438\u0435\u043D\u0442\u0430 / \u0430\u0431\u043E\u043D\u0435\u043C\u0435\u043D\u0442')
+    .replace(/unit economics/gi, 'экономика по клиенту / абонементу')
     .replace(/\bbottleneck\b/gi, '\u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u0435 \u043F\u0440\u0438\u0431\u044B\u043B\u0438')
     .replace(/\bexecutive summary\b/gi, '\u043A\u0440\u0430\u0442\u043A\u0438\u0439 \u0438\u0442\u043E\u0433')
 }
@@ -1059,7 +1060,11 @@ function Header({
                   <Calendar className="h-4 w-4" />
                   {data.date}
                 </span>
-                {!isDemo && (
+                {isDemo ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: TEXT3 }}>
+                    Демо-отчёт
+                  </span>
+                ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: TEXT3 }}>
                     Модель: {modelLabel}
                   </span>
