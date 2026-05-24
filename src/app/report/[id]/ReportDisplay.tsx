@@ -710,7 +710,7 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
       icon: CircleDollarSign,
       value: formatPercent(facts.avgMargin),
       support: `Средняя выручка ${formatCurrency(facts.avgRevenue, true)}, прибыль ${formatCurrency(facts.avgProfit, true)}`,
-      statusLabel: 'Средняя маржа за период',
+      statusLabel: 'За период',
       detailTitle: 'Ключевые цифры',
       detailLead: `Средняя маржа за период — ${formatPercent(facts.avgMargin)} при целевом ориентире ${targetMgn}%. Разрыв — ${marginGap} п.п.: нужен рост выручки или снижение расходной базы.`,
       bullets: [
@@ -768,8 +768,8 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
       tone: 'amber',
       icon: TrendingDown,
       value: biggestCosts > 0 ? `УК + аренда + ФОТ = ${biggestCosts}% выручки` : 'Основные расходы съедают прибыль',
-      support: gap !== null ? `Разрыв до безубыточности: ${formatCurrency(gap, true)}/мес` : 'Разрыв до безубыточности виден по P&L',
-      statusLabel: 'Критично: база съедает маржу',
+      support: 'Три статьи формируют основной разрыв до прибыли',
+      statusLabel: 'Критично',
       detailTitle: 'Где теряется прибыль',
       detailLead: 'Здесь важен не весь список расходов, а те точки, где нагрузка не даёт бизнесу выйти в плюс.',
       bullets: [
@@ -787,7 +787,7 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
       tone: 'amber',
       icon: Activity,
       value: worstAnomaly ? worstAnomaly.replace(/^Худший месяц:\s*/i, '') : 'Есть выраженные провалы',
-      support: bestAnomaly ? bestAnomaly.replace(/^Лучший месяц:\s*/i, '') : 'Есть месяцы, которые резко выбиваются',
+      support: bestAnomaly ? `Лучший: ${bestAnomaly.replace(/^Лучший месяц:\s*/i, '').replace(/\.$/, '')}` : 'Есть месяцы, которые резко выбиваются',
       statusLabel: 'Требует проверки',
       detailTitle: 'Аномалии',
       detailLead: 'Аномалии нужны не ради любопытства, а чтобы отделить разовые события от системной проблемы.',
@@ -830,7 +830,7 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
       support: gap !== null && gap > 0
         ? `Не хватает ${formatCurrency(gap, true)}/мес`
         : 'Средняя выручка близка к порогу безубыточности',
-      statusLabel: gap !== null && gap > 0 ? 'Критично: ниже порога' : 'По данным отчёта',
+      statusLabel: gap !== null && gap > 0 ? 'Ниже порога' : 'По отчёту',
       detailTitle: 'Точка безубыточности',
       detailLead: 'Точка безубыточности — это минимальная выручка для нулевой прибыли. Целевой ориентир выше — он показывает, когда бизнес выходит на нужную маржу.',
       bullets: [
@@ -956,7 +956,7 @@ function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
   const colors = TONES[tone]
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none"
+      className="inline-flex w-fit items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none"
       style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: colors.fill }} />
@@ -1483,7 +1483,7 @@ function DashboardCards({
           tabIndex={0}
           onClick={() => onOpen(card.id)}
           onKeyDown={(event) => openFromKeyboard(event, card.id)}
-          className={`rounded-3xl border p-4 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          className={`flex flex-col rounded-3xl border p-4 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
             card.featured ? 'md:col-span-2 xl:col-span-2' : ''
           }`}
           style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
@@ -1499,7 +1499,7 @@ function DashboardCards({
             <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
           </div>
 
-          <div className={`${card.featured ? 'min-h-[126px]' : 'min-h-[104px]'}`}>
+          <div className={`flex-1 ${card.featured ? 'min-h-[126px]' : 'min-h-[104px]'}`}>
             <div className="mb-3">
               <p
                 className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`}
@@ -1516,9 +1516,9 @@ function DashboardCards({
             <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="mt-auto flex items-center justify-between gap-3 pt-3">
             <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
-              {card.note ?? card.statusLabel}
+              {card.statusLabel}
             </p>
             <button
               type="button"
@@ -1655,15 +1655,15 @@ function DetailVisual({
       return (
         <div className="space-y-3 rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-            <span className="rounded-full px-2.5 py-1" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+            <span className="inline-flex w-fit rounded-full px-2.5 py-1" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
               База {formatCurrency(top3Amt, true)}/мес
             </span>
             <span style={{ color: TEXT3 }}>→</span>
-            <span className="rounded-full px-2.5 py-1" style={{ background: '#FEF3C7', color: '#92400E' }}>
+            <span className="inline-flex w-fit rounded-full px-2.5 py-1" style={{ background: '#FEF3C7', color: '#92400E' }}>
               Порог {formatCurrency(pnlFacts.breakevenRevenue, true)}
             </span>
             <span style={{ color: TEXT3 }}>→</span>
-            <span className="rounded-full px-2.5 py-1" style={{ background: '#EEF2FF', color: '#3730A3' }}>
+            <span className="inline-flex w-fit rounded-full px-2.5 py-1" style={{ background: '#EEF2FF', color: '#3730A3' }}>
               Выручка {formatCurrency(pnlFacts.avgRevenue, true)}
             </span>
           </div>

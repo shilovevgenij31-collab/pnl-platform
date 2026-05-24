@@ -17,8 +17,16 @@ const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000
 const RATE_LIMIT_MAX_REQUESTS = 5
 const rateLimitStore = new Map<string, RateLimitEntry>()
 
-const PNL_REVENUE_KW = ['выручка', 'доход', 'продажи', 'оборот', 'агентское вознаграждение', 'revenue', 'income', 'sales']
-const PNL_EXPENSE_KW = ['расходы', 'расход', 'себестоимость', 'фот', 'зарплата', 'маркетинг', 'аренда', 'подрядчики', 'expense', 'cost', 'salary']
+const PNL_REVENUE_KW = [
+  'выручка', 'доход', 'продажи', 'оборот', 'реализация', 'общая выручка',
+  'агентское вознаграждение', 'revenue', 'income', 'sales', 'gross revenue',
+]
+const PNL_EXPENSE_KW = [
+  'расходы', 'расход', 'себестоимость', 'затраты', 'переменные расходы',
+  'постоянные расходы', 'фот', 'зарплата', 'маркетинг', 'аренда', 'подрядчики',
+  'сырье', 'материалы', 'упаковка', 'cogs', 'cost', 'expense', 'salary',
+  'payroll', 'marketing', 'rent', 'operating', 'opex', 'налоги', 'кредиты', 'амортизация',
+]
 
 function assessPnlTextQuality(text: string): string | null {
   const lower = text.toLowerCase()
