@@ -203,8 +203,16 @@ function sanitizeMarkdownForDisplay(markdown: string): string {
     .replace(/Medium/gi, 'Средняя')
     .replace(/Low/gi, 'Низкая')
     .replace(/Status/gi, 'Оценка ситуации')
+    .replace(/unit economics/gi, '\u044D\u043A\u043E\u043D\u043E\u043C\u0438\u043A\u0430 \u043D\u0430 \u043A\u043B\u0438\u0435\u043D\u0442\u0430 / \u0430\u0431\u043E\u043D\u0435\u043C\u0435\u043D\u0442')
     .replace(/\p{Emoji_Presentation}/gu, '')
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '')
+}
+
+function ruSanitize(value: string): string {
+  return value
+    .replace(/unit economics/gi, '\u044D\u043A\u043E\u043D\u043E\u043C\u0438\u043A\u0430 \u043D\u0430 \u043A\u043B\u0438\u0435\u043D\u0442\u0430 / \u0430\u0431\u043E\u043D\u0435\u043C\u0435\u043D\u0442')
+    .replace(/\bbottleneck\b/gi, '\u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u0435 \u043F\u0440\u0438\u0431\u044B\u043B\u0438')
+    .replace(/\bexecutive summary\b/gi, '\u043A\u0440\u0430\u0442\u043A\u0438\u0439 \u0438\u0442\u043E\u0433')
 }
 
 function formatCurrency(value: number | null, compact = false): string {
@@ -517,18 +525,18 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
     [/системн/i, /убыт/i, /расход/i, /крит/i],
     'Бизнес системно убыточен: текущая расходная база выше выручки в большинстве месяцев.',
   )
-  const mainConstraint = extractPreferredSentence(
+  const mainConstraint = ruSanitize(extractPreferredSentence(
     constraint?.content ?? overview?.content ?? report,
     [/расходн/i, /безубыточ/i, /огранич/i, /фиксир/i],
     'Главное ограничение прибыли — постоянная расходная база, которая требует более высокой выручки для безубыточности.',
-  )
+  ))
   const limitationCandidates = (limitations?.content ?? '')
     .split('\n')
     .map(cleanText)
     .filter((line) => /не хватает|предваритель|не раскрыт|нет данных|огранич/i.test(line))
   const limitationsList = uniqueBullets(
     [
-      ...limitationCandidates,
+      ...limitationCandidates.map(ruSanitize),
       ...(source?.metadata['Предупреждения'] && source.metadata['Предупреждения'] !== 'нет'
         ? source.metadata['Предупреждения'].split(';')
         : []),
@@ -722,7 +730,7 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
       icon: TrendingUp,
       value: bestAnomaly ? bestAnomaly.replace(/^Лучший месяц:\s*/i, '') : 'Лучший месяц в данных найден',
       support: worstAnomaly ? worstAnomaly.replace(/^Худший месяц:\s*/i, '') : 'Есть выраженные сезонные провалы',
-      statusLabel: 'По динамике P&L',
+      statusLabel: '18 месяцев',
       detailTitle: 'Динамика выручки и прибыли',
       detailLead: 'По тренду видно, когда бизнес покрывает постоянные расходы, а когда проваливается ниже порога.',
       bullets: [
@@ -769,7 +777,7 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
         'ФОТ в летние месяцы вырастает до 39–41% выручки — при нормальной работе это критичный перегруз.',
         'Снизить продукты или коммунальные без ущерба сервису нельзя без анализа по клубам.',
       ],
-      note: gap !== null ? `Разрыв до безубыточности: ${formatCurrency(gap, true)}/мес.` : 'Три главных статьи = 79% выручки.',
+      note: 'Главная проблема — не одна статья, а то, что крупные расходы не снижаются вместе с выручкой.',
       actionText: 'Разбирать конкретные зоны потерь по суммам: что снизить быстро, а что требует переговоров.',
     },
     {
@@ -783,7 +791,12 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
       statusLabel: 'Требует проверки',
       detailTitle: 'Аномалии',
       detailLead: 'Аномалии нужны не ради любопытства, а чтобы отделить разовые события от системной проблемы.',
-      bullets: facts.anomalies.length > 0 ? facts.anomalies.slice(0, 4) : ['Отдельные месяцы требуют расшифровки по клубам и трафику.'],
+      bullets: [
+        'Лучший месяц не доказывает устойчивую прибыльность — это разовый результат высокого сезонного спроса.',
+        'Худший месяц показывает риск сезонной просадки: выручка падает вдвое, постоянные расходы остаются.',
+        'Апрельский и июльский провал нужно разобрать по клубам: акции, УК, ФОТ и аренда в этих месяцах.',
+        'Задача аномалий — отделить разовый выброс от системной проблемы, а не объяснить каждый месяц.',
+      ],
       note: 'Разовые и системные события нужно разделять.',
       actionText: 'Проверить, что именно происходило в лучших и худших месяцах: акция, сезонность или структурная проблема.',
     },
@@ -817,7 +830,7 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
       support: gap !== null && gap > 0
         ? `Не хватает ${formatCurrency(gap, true)}/мес`
         : 'Средняя выручка близка к порогу безубыточности',
-      statusLabel: gap !== null && gap > 0 ? 'Критично: ниже порога' : 'По данным P&L',
+      statusLabel: gap !== null && gap > 0 ? 'Критично: ниже порога' : 'По данным отчёта',
       detailTitle: 'Точка безубыточности',
       detailLead: 'Точка безубыточности — это минимальная выручка для нулевой прибыли. Целевой ориентир выше — он показывает, когда бизнес выходит на нужную маржу.',
       bullets: [
@@ -1046,9 +1059,11 @@ function Header({
                   <Calendar className="h-4 w-4" />
                   {data.date}
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: TEXT3 }}>
-                  Модель: {modelLabel}
-                </span>
+                {!isDemo && (
+                  <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: TEXT3 }}>
+                    Модель: {modelLabel}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -1082,9 +1097,9 @@ function IntroBlock({ agentType }: { agentType: ReportPageData['agentType'] }) {
     agentType === 'pnl'
       ? [
           { label: 'Источник', value: 'Сводный P&L', tone: 'blue' },
-          { label: 'Точно считаем', value: 'Выручку, расходы и прибыль', tone: 'green' },
-          { label: 'Не хватает', value: 'P&L по клубам, трафика и УК', tone: 'amber' },
-          { label: 'Уровень выводов', value: 'Часть причин предварительная', tone: 'slate' },
+          { label: 'Точно считаем', value: 'Выручка / расходы / прибыль', tone: 'green' },
+          { label: 'Не хватает', value: 'Клубы / трафик / УК', tone: 'amber' },
+          { label: 'Выводы', value: 'Часть причин предварительная', tone: 'slate' },
         ]
       : [
           { label: 'Источник', value: 'Описание процесса и симптомов', tone: 'blue' },
