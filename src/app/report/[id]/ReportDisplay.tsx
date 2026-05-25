@@ -1339,8 +1339,8 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
       kicker: 'Первый шаг',
       tone: 'indigo',
       icon: CheckCircle2,
-      value: 'Необходимое действие: расшифровать расходы УК',
-      support: 'Первый шаг перед решениями по расходам и клубам',
+      value: 'Сначала карта клубов, потом решения по расходам и росту',
+      support: 'Сначала собрать разрез по клубам, затем принимать разные решения по разным типам точек',
       statusLabel: 'Первый шаг',
       detailTitle: 'Сценарии и план действий',
       detailLead: 'Первый шаг — не "продать больше", а понять, где именно течёт маржа и какие точки создают убыток.',
@@ -1808,8 +1808,8 @@ function InteractiveTrendChart({
   }
 
   const width = 760
-  const height = 284
-  const padding = { top: 16, right: 18, bottom: 34, left: 52 }
+  const height = 264
+  const padding = { top: 14, right: 16, bottom: 30, left: 48 }
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
   const values = [...revenue, ...profit]
@@ -1840,7 +1840,7 @@ function InteractiveTrendChart({
 
   return (
     <div className="space-y-1.5">
-      <div className="rounded-3xl border p-2.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+      <div className="rounded-3xl border p-2" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full overflow-visible" role="img" aria-label="Динамика выручки и прибыли по месяцам">
           {yTicks.map((tick) => {
             const y = padding.top + plotHeight - ((tick - minValue) / range) * plotHeight
@@ -1923,7 +1923,7 @@ function InteractiveTrendChart({
         </svg>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-1.5 sm:grid-cols-3">
         <MetricChip label="Лучший месяц" value={`${labels[bestIndex]} / ${formatCurrency(bestValue, true)}`} tone="green" />
         <MetricChip label="Худший месяц" value={`${labels[worstIndex]} / ${formatCurrency(worstValue, true)}`} tone="red" />
         <MetricChip label="Период" value={`${labels[0]} — ${labels.at(-1)}`} tone="slate" />
@@ -1972,15 +1972,15 @@ function BreakevenPreview({ current, breakeven, gap }: { current: number | null;
   const progress = current !== null && breakeven !== null && breakeven > 0 ? clamp((current / breakeven) * 100) : 0
   const tone: Tone = gap !== null && gap > 0 ? 'red' : 'green'
   return (
-    <div>
-      <div className="mb-2 flex items-end justify-between gap-3">
-        <span className="text-2xl font-semibold" style={{ color: TEXT }}>{Math.round(progress)}%</span>
+    <div className="space-y-2.5">
+      <div className="flex items-end justify-between gap-3">
+        <span className="text-[2rem] font-semibold leading-none" style={{ color: TEXT }}>{Math.round(progress)}%</span>
         <StatusPill tone={tone}>{gap !== null && gap > 0 ? 'Ниже порога' : 'Около безубыточности'}</StatusPill>
       </div>
       <div className="h-3 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
         <div className="h-full rounded-full" style={{ width: `${progress}%`, background: TONES[tone].fill }} />
       </div>
-      <div className="mt-2 space-y-1 text-[11px]" style={{ color: TEXT2 }}>
+      <div className="space-y-1 text-[11px]" style={{ color: TEXT2 }}>
         <p>Средняя выручка за период: {formatCurrency(current, true)}</p>
         <p>Точка безубыточности: {formatCurrency(breakeven, true)}</p>
       </div>
@@ -2055,7 +2055,7 @@ function CardPreview({
           </div>
         )
       case 'actions':
-        return <ScenarioPlanPanel facts={pnlFacts} />
+        return <ScenarioPlanPanel />
       case 'limitations':
         return null
       case 'anomalies':
@@ -2120,7 +2120,7 @@ function MetricChip({ label, value, tone = 'slate' }: { label: string; value: st
   return (
     <div className="rounded-2xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
       <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{label}</p>
-      <p className="mt-0.5 text-sm font-semibold" style={{ color: tone === 'slate' ? TEXT : TONES[tone].text }}>{value}</p>
+      <p className="mt-0.5 text-[0.92rem] font-semibold leading-snug" style={{ color: tone === 'slate' ? TEXT : TONES[tone].text }}>{value}</p>
     </div>
   )
 }
@@ -2153,11 +2153,11 @@ function BulletPreview({ items }: { items: string[] }) {
   )
 }
 
-function ScenarioPlanPanel({ facts }: { facts: PnlFacts }) {
+function ScenarioPlanPanel() {
   const plan = [
-    { window: '7 дней', action: facts.actions[0] ?? 'Собрать P&L по каждому клубу: выручка, аренда, ФОТ, УК, продукты, прибыль.' },
-    { window: '14 дней', action: facts.actions[1] ?? 'Разделить клубы на три группы: доноры, нейтральные, пожиратели маржи.' },
-    { window: '30 дней', action: facts.actions[2] ?? 'Принять разные решения по группам: масштабировать сильные, довести нейтральные, разобрать или пересобрать слабые.' },
+    { window: '7 дней', action: 'Собрать P&L по клубам: выручка, аренда, ФОТ, УК, прибыль.' },
+    { window: '14 дней', action: 'Разделить клубы на доноров, нейтральные точки и пожирателей маржи.' },
+    { window: '30 дней', action: 'Принять разные решения по группам: масштабировать, доводить до нормы, пересобирать.' },
   ]
   const dangerous = [
     'Не резать расходы вслепую',
@@ -2167,28 +2167,28 @@ function ScenarioPlanPanel({ facts }: { facts: PnlFacts }) {
   ]
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)]">
-      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>План 7 / 14 / 30</h3>
-        <div className="space-y-2.5">
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.76fr)]">
+      <div className="rounded-3xl border p-3.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <h3 className="mb-2.5 text-sm font-semibold" style={{ color: TEXT }}>План 7 / 14 / 30</h3>
+        <div className="space-y-1.5">
           {plan.map((step) => (
-            <div key={step.window} className="grid gap-2 rounded-2xl border p-3 sm:grid-cols-[72px_1fr]" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
-              <span className="inline-flex h-7 w-fit items-center justify-center rounded-full px-2.5 text-[11px] font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>
+            <div key={step.window} className="grid gap-1.5 rounded-2xl border px-3 py-2.5 sm:grid-cols-[68px_1fr]" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
+              <span className="inline-flex h-6 w-fit items-center justify-center rounded-full px-2.5 text-[10px] font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>
                 {step.window}
               </span>
-              <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>{step.action}</p>
+              <p className="text-[0.9rem] leading-[1.5]" style={{ color: '#334155' }}>{step.action}</p>
             </div>
           ))}
         </div>
       </div>
-      <div className="rounded-3xl border p-4" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+      <div className="rounded-3xl border p-3.5" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
         <h3 className="text-sm font-semibold" style={{ color: '#92400E' }}>Какие решения сейчас опасны</h3>
-        <p className="mt-2 text-sm leading-relaxed" style={{ color: '#78350F' }}>
-          Опасно принимать одно решение для всей сети: “режем всё”, “льём маркетинг”, “сокращаем персонал” или “закрываем направления”. Сводный P&L показывает убыток, но не показывает, где именно он возникает. Без клубного разреза можно ударить по сильным точкам и не исправить слабые.
+        <p className="mt-2 text-[0.88rem] leading-[1.5]" style={{ color: '#78350F' }}>
+          Сводный P&L показывает убыток, но не показывает, где именно он возникает. Без клубного разреза легко ударить по сильным точкам и не исправить слабые.
         </p>
-        <div className="mt-3 grid gap-2">
+        <div className="mt-2.5 grid gap-1.5">
           {dangerous.map((item) => (
-            <div key={item} className="flex gap-2 text-sm leading-snug" style={{ color: '#78350F' }}>
+            <div key={item} className="flex gap-2 text-[0.9rem] leading-snug" style={{ color: '#78350F' }}>
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#F59E0B' }} />
               <span>{item}</span>
             </div>
@@ -2416,18 +2416,18 @@ function PnlActionCard({ card }: { card: DetailCard }) {
   if (!action) return null
   const colors = TONES[action.tone]
   return (
-    <aside className="flex h-full flex-col rounded-3xl border p-4" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
-      <div className="mb-3 flex items-start gap-3">
+    <aside className="flex flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
+      <div className="flex items-start gap-3">
         <IconBadge icon={action.icon} tone={action.tone} />
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Управленческий вывод</p>
           <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
         </div>
       </div>
-      <p className="text-lg font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
-      <p className="mt-3 text-sm leading-relaxed" style={{ color: '#334155' }}>{action.text}</p>
+      <p className="text-[1.05rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
+      <p className="text-[0.94rem] leading-[1.62]" style={{ color: '#334155' }}>{action.text}</p>
       {action.tags && action.tags.length > 0 && (
-        <div className="mt-auto flex flex-wrap gap-2 pt-4">
+        <div className="flex flex-wrap gap-2 pt-1">
           {action.tags.map((tag) => (
             <span key={tag} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}>
               {tag}
@@ -2462,7 +2462,7 @@ function DashboardCards({
   }
 
   return (
-    <section className={agentType === 'pnl' ? 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]' : 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'}>
+    <section className={agentType === 'pnl' ? 'grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]' : 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'}>
       {cards.map((card) => (
         <Fragment key={card.id}>
         <article
@@ -2470,7 +2470,7 @@ function DashboardCards({
           tabIndex={0}
           onClick={() => onOpen(card.id)}
           onKeyDown={(event) => openFromKeyboard(event, card.id)}
-          className={`flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          className={`flex flex-col self-start rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
             agentType === 'pnl' && card.id === 'actions' ? 'xl:col-span-2' : card.featured && agentType !== 'pnl' ? 'md:col-span-2 xl:col-span-2' : ''
           }`}
           style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
@@ -2486,8 +2486,8 @@ function DashboardCards({
             {agentType !== 'pnl' && <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>}
           </div>
 
-          <div className={`flex-1 ${card.featured ? 'min-h-[104px]' : 'min-h-[88px]'}`}>
-            <div className="mb-2.5">
+          <div className={agentType === 'pnl' ? 'flex-none' : `flex-1 ${card.featured ? 'min-h-[104px]' : 'min-h-[88px]'}`}>
+            <div className="mb-2">
               <p
                 className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`}
                 style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
@@ -2495,7 +2495,7 @@ function DashboardCards({
                 {card.value}
               </p>
               {card.support && (
-                <p className="mt-1.5 text-sm leading-snug" style={{ color: '#334155' }}>
+                <p className="mt-1 text-sm leading-snug" style={{ color: '#334155' }}>
                   {card.support}
                 </p>
               )}
@@ -2503,7 +2503,7 @@ function DashboardCards({
             <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
           </div>
 
-          <div className="mt-auto flex items-center justify-between gap-3 pt-2.5">
+          <div className="mt-2 flex items-center justify-between gap-3 pt-1.5">
             {agentType === 'pnl'
               ? <span />
               : (
@@ -2690,7 +2690,7 @@ function DetailVisual({
       )
     }
     if (card.id === 'actions') {
-      return <ScenarioPlanPanel facts={pnlFacts} />
+      return <ScenarioPlanPanel />
     }
     if (card.id === 'limitations') {
       return <LimitationsPanel sourceWarning={card.note} />
@@ -2876,35 +2876,40 @@ function DetailDrawer({
 
 function makeMarkdownComponents() {
   return {
+    h2: ({ children }: { children?: ReactNode }) => (
+      <h2 className="mb-3 mt-8 text-[1.2rem] font-semibold tracking-tight first:mt-0" style={{ color: TEXT }}>
+        {children}
+      </h2>
+    ),
     h3: ({ children }: { children?: ReactNode }) => (
-      <h3 className="mb-2 mt-4 text-base font-semibold" style={{ color: TEXT }}>
+      <h3 className="mb-2.5 mt-6 text-[1.02rem] font-semibold tracking-tight" style={{ color: TEXT }}>
         {children}
       </h3>
     ),
     h4: ({ children }: { children?: ReactNode }) => (
-      <h4 className="mb-2 mt-3 text-sm font-semibold" style={{ color: TEXT }}>
+      <h4 className="mb-2 mt-4 text-[0.95rem] font-semibold" style={{ color: TEXT }}>
         {children}
       </h4>
     ),
     p: ({ children }: { children?: ReactNode }) => (
-      <p className="mb-2.5 text-[0.95rem] leading-[1.62]" style={{ color: '#334155' }}>
+      <p className="mb-3 text-[0.98rem] leading-[1.72]" style={{ color: '#334155' }}>
         {children}
       </p>
     ),
     ul: ({ children }: { children?: ReactNode }) => (
-      <ul className="mb-3 space-y-2 pl-0">{children}</ul>
+      <ul className="mb-4 space-y-2.5 pl-0">{children}</ul>
     ),
     ol: ({ children }: { children?: ReactNode }) => (
-      <ol className="mb-3 space-y-2 pl-0">{children}</ol>
+      <ol className="mb-4 space-y-2.5 pl-0">{children}</ol>
     ),
     li: ({ children }: { children?: ReactNode }) => (
-      <li className="ml-0 flex gap-2 text-[0.95rem] leading-[1.6]" style={{ color: '#334155' }}>
+      <li className="ml-0 flex gap-2.5 text-[0.97rem] leading-[1.68]" style={{ color: '#334155' }}>
         <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#93C5FD' }} />
         <span>{children}</span>
       </li>
     ),
     table: ({ children }: { children?: ReactNode }) => (
-      <div className="report-table my-4 overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
+      <div className="report-table my-5 overflow-x-auto rounded-2xl border shadow-[0_8px_20px_rgba(15,23,42,0.04)]" style={{ borderColor: BORDER }}>
         <table className="min-w-[720px] w-full border-collapse text-sm">{children}</table>
       </div>
     ),
@@ -2928,6 +2933,12 @@ function makeMarkdownComponents() {
       <pre className="my-3 overflow-x-auto rounded-xl p-4 text-xs" style={{ background: '#F8FAFC', border: `1px solid ${BORDER}` }}>
         {children}
       </pre>
+    ),
+    hr: () => <hr className="my-6 border-0 border-t" style={{ borderColor: BORDER_SOFT }} />,
+    strong: ({ children }: { children?: ReactNode }) => (
+      <strong className="font-semibold" style={{ color: TEXT }}>
+        {children}
+      </strong>
     ),
   }
 }
@@ -3165,10 +3176,12 @@ function FullReportBlock({ report }: { report: string }) {
           Этот блок содержит полный текстовый вариант AI-анализа. Основной управленческий обзор — карточки выше — удобнее для навигации и принятия решений. Текстовая версия полезна для детального изучения и копирования.
         </p>
       </div>
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-[960px]">
+        <article className="rounded-3xl border bg-white px-5 py-5 sm:px-8 sm:py-7" style={{ borderColor: BORDER_SOFT }}>
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
           {sanitizeMarkdownForDisplay(report)}
         </ReactMarkdown>
+        </article>
       </div>
     </section>
   )
