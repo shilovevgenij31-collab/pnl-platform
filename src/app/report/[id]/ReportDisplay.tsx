@@ -1323,7 +1323,7 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       detailLead: facts.constraint,
       bullets: [
         'Здесь видно не просто слабый участок, а этап, который задаёт потолок всей системе. Пока первичный контакт не успевает быстро забирать входящий поток, весь остальной процесс живёт в режиме перегруза до ограничения и недогруза после него. В терминах бизнеса это означает одно: спрос приходит быстрее, чем компания умеет превращать его в деньги.',
-        'Опасность в том, что рост входящего потока легко принять за признак здоровья. На практике это даёт больше заявок без ответа, больше просроченных касаний и больше упущенной выручки. Команда выглядит занятой, но занятость здесь маскирует потерю throughput: система тратит усилия, не увеличивая пропорционально результат.',
+        'Опасность в том, что рост входящего потока легко принять за признак здоровья. На практике это даёт больше заявок без ответа, больше просроченных касаний и больше упущенной выручки. Команда выглядит занятой, но занятость здесь маскирует потерю пропускной способности: система тратит усилия, не увеличивая пропорционально результат.',
         'Самая вероятная ошибка сейчас — лечить ситуацию до узкого места: усиливать рекламу, спорить о качестве трафика или давить на следующие этапы. Первым нужно делать не это, а наводить дисциплину на входе: кто отвечает, за сколько минут, как лид получает статус и почему он зависает без движения.',
       ],
       note: 'Пока это ограничение не разгружено, остальная воронка не сможет стабильно расти вместе со спросом.',
@@ -1421,7 +1421,7 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       support: 'Порядок действий важнее количества инициатив.',
       statusLabel: 'По шагам',
       detailTitle: 'План действий',
-      detailLead: 'Сильный план в логике ограничений — это не набор параллельных инициатив. Его задача — задать правильную очередность: сначала доказать, где именно система теряет throughput, затем быстро убрать лишнюю нагрузку с ограничения, и только после этого расширять мощность и искать следующее узкое место.',
+      detailLead: 'Сильный план в логике ограничений — это не набор параллельных инициатив. Его задача — задать правильную очередность: сначала доказать, где именно система теряет пропускную способность, затем быстро убрать лишнюю нагрузку с ограничения, и только после этого расширять мощность и искать следующее узкое место.',
       bullets: [
         facts.actionPlan7[0] ? `7 дней: ${facts.actionPlan7[0]}` : '7 дней: замерить время реакции и посчитать лиды без контакта за 2 часа.',
         facts.actionPlan14[0] ? `14 дней: ${facts.actionPlan14[0]}` : '14 дней: ввести SLA и настроить авто-напоминания.',
@@ -2287,13 +2287,16 @@ function CardPreview({
     switch (card.id) {
       case 'constraint':
         return (
-          <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
-            <MetricChip label="Поток / мес" value={`${goldrattFacts.leadVolume}`} tone="slate" />
-            <MetricChip label="Обработано" value={`${goldrattFacts.processedVolume}`} tone="blue" />
-            <MetricChip label="Застревает" value={`${goldrattFacts.stuckLeads}`} tone="red" />
-            <MetricChip label="Реакция" value={`${goldrattFacts.reactionTime} ч`} tone="amber" />
-            <MetricChip label="Этап / команда" value={`${goldrattFacts.processRows.find((row) => row.isBottleneck)?.load ?? goldrattFacts.managerLoad}% / ${goldrattFacts.managerLoad}%`} tone="red" />
-            <MetricChip label="Потери" value={formatCurrency(goldrattFacts.lateContactLoss, true)} tone="amber" />
+          <div>
+            <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+              <MetricChip label="Поток / мес" value={`${goldrattFacts.leadVolume}`} tone="slate" />
+              <MetricChip label="Обработано" value={`${goldrattFacts.processedVolume}`} tone="blue" />
+              <MetricChip label="Застревает" value={`${goldrattFacts.stuckLeads}`} tone="red" />
+              <MetricChip label="Реакция" value={`${goldrattFacts.reactionTime} ч`} tone="amber" />
+              <MetricChip label="Этап / команда" value={`${goldrattFacts.processRows.find((row) => row.isBottleneck)?.load ?? goldrattFacts.managerLoad}% / ${goldrattFacts.managerLoad}%`} tone="red" />
+              <MetricChip label="Потери" value={formatCurrency(goldrattFacts.lateContactLoss, true)} tone="amber" />
+            </div>
+            <GoldrattConstraintPreview facts={goldrattFacts} />
           </div>
         )
       case 'flow':
@@ -2301,7 +2304,12 @@ function CardPreview({
       case 'evidence':
         return <GoldrattTrendChart data={goldrattFacts.trendRows} />
       case 'donot':
-        return <BulletPreview items={goldrattFacts.doNotOptimize.slice(0, 3)} />
+        return (
+          <div>
+            <BulletPreview items={goldrattFacts.doNotOptimize.slice(0, 3)} />
+            <GoldrattDoNotGrid />
+          </div>
+        )
       case 'exploit':
         return (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -2485,10 +2493,7 @@ function FlowPipelineChart({ stages }: { stages: Array<{ label: string; isBottle
 }
 
 function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
-  const [activeIndex, setActiveIndex] = useState(() => {
-    const bottleneckIndex = stages.findIndex((stage) => stage.isBottleneck)
-    return bottleneckIndex >= 0 ? bottleneckIndex : 0
-  })
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [reducedMotion, setReducedMotion] = useState(false)
 
   useEffect(() => {
@@ -2500,7 +2505,9 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
   }, [])
 
   if (stages.length === 0) return null
-  const activeStage = stages[activeIndex] ?? stages[0]
+  const bottleneckIndex = stages.findIndex((stage) => stage.isBottleneck)
+  const resolvedActiveIndex = activeIndex ?? (bottleneckIndex >= 0 ? bottleneckIndex : 0)
+  const activeStage = stages[resolvedActiveIndex] ?? stages[0]
 
   return (
     <div className="space-y-3">
@@ -2514,7 +2521,7 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
             <p className="mt-1 text-xs leading-relaxed" style={{ color: TEXT2 }}>
               {activeStage?.isBottleneck
                 ? 'Здесь система физически сужается: очередь растёт быстрее, чем команда успевает её пропускать дальше по потоку.'
-                : 'Наведите на этап в схеме или строку в таблице ниже, чтобы увидеть, как он влияет на throughput всей системы.'}
+                : 'Наведите на этап в схеме или строку в таблице ниже, чтобы увидеть, как он влияет на пропускную способность всей системы.'}
             </p>
           </div>
           <div className="grid gap-2 text-xs sm:grid-cols-3">
@@ -2538,13 +2545,15 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
         <div className="flex min-w-[620px] flex-col gap-2 py-1">
           <div className="flex items-center gap-1">
             {stages.map((stage, index) => {
-              const isActive = index === activeIndex
+              const isActive = index === resolvedActiveIndex
               return (
                 <div key={stage.label} className="flex flex-1 items-center gap-1">
                   <button
                     type="button"
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onFocus={() => setActiveIndex(index)}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onMouseLeave={() => setActiveIndex(null)}
+                  onFocus={() => setActiveIndex(index)}
+                  onBlur={() => setActiveIndex(null)}
                     className="flex flex-1 flex-col items-center gap-0.5 rounded-2xl border px-1.5 py-2 text-center transition-all"
                     style={{
                       background: stage.isBottleneck ? (isActive ? '#FEE2E2' : '#FEF2F2') : isActive ? '#EEF6FF' : '#F8FAFC',
@@ -2592,12 +2601,13 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
               </thead>
               <tbody>
                 {stages.map((stage, index) => {
-                  const isActive = index === activeIndex
+                  const isActive = index === resolvedActiveIndex
                   const rowBackground = stage.isBottleneck ? (isActive ? '#FEE2E2' : '#FEF2F2') : isActive ? '#F8FBFF' : CARD
                   return (
                     <tr
                       key={stage.label}
                       onMouseEnter={() => setActiveIndex(index)}
+                      onMouseLeave={() => setActiveIndex(null)}
                       className="transition-colors hover:bg-slate-50"
                       style={{ background: rowBackground }}
                     >
@@ -2678,17 +2688,21 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
     payments: data[hIdx]?.payments ?? 0,
     reaction: data[hIdx]?.reaction ?? 0,
   }
-  const tooltipX = Math.min(Math.max(tip.x + 12, 12), W - 230)
-  const tooltipY = Math.max(Math.min(tip.y - 18, H - 100), 10)
+  const tooltipWidth = 176
+  const tooltipHeight = 82
+  const tooltipX = tip.x > W * 0.62
+    ? Math.max(tip.x - tooltipWidth - 12, 10)
+    : Math.min(tip.x + 12, W - tooltipWidth - 10)
+  const tooltipY = Math.max(Math.min(tip.y - tooltipHeight / 2, H - tooltipHeight - 10), 10)
   const trendNote =
     tip.leads > tip.processed
-      ? 'Лидов больше, а быстрая обработка не успевает за ростом входа.'
-      : 'Быстрая обработка не отстаёт от входящего потока.'
+      ? 'Лидов становится больше, но быстрая обработка не успевает за входящим потоком.'
+      : 'Скорость обработки держится ближе к входящему потоку и меньше давит на оплату.'
 
   return (
     <div className="space-y-2.5">
-      <div className="rounded-3xl border p-2" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Динамика лидов, быстрой обработки и оплат по месяцам">
+      <div className="overflow-hidden rounded-3xl border p-2" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label="Динамика лидов, быстрой обработки и оплат по месяцам">
           {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
             const v = Math.round(maxVal * ratio)
             const y = pad.top + plotH - ratio * plotH
@@ -2733,21 +2747,51 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
           ))}
 
           <g transform={`translate(${tooltipX}, ${tooltipY})`}>
-            <rect width="218" height="92" rx="12" fill="white" stroke={BORDER} />
+            <rect width={tooltipWidth} height={tooltipHeight} rx="12" fill="white" stroke={BORDER} />
             <text x="10" y="20" fontSize="11" fontWeight="700" fill={TEXT}>{tip.month}</text>
             <text x="10" y="38" fontSize="11" fill="#3B82F6">{`Лиды: ${tip.leads}`}</text>
-            <text x="10" y="53" fontSize="11" fill="#10B981">{`Обработано за 2 ч: ${tip.processed}`}</text>
-            <text x="10" y="68" fontSize="11" fill="#F59E0B">{`Оплаты: ${tip.payments}   Реакция: ${tip.reaction} ч`}</text>
-            <text x="10" y="83" fontSize="10" fill={TEXT2}>{trendNote}</text>
+            <text x="10" y="53" fontSize="11" fill="#10B981">{`За 2 ч: ${tip.processed}`}</text>
+            <text x="10" y="68" fontSize="11" fill="#F59E0B">{`Оплаты: ${tip.payments}`}</text>
+            <text x="10" y="80" fontSize="11" fill={TEXT2}>{`Реакция: ${tip.reaction} ч`}</text>
           </g>
         </svg>
       </div>
+      <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>{trendNote}</p>
       <div className="flex flex-wrap gap-2.5 text-[10px]" style={{ color: TEXT3 }}>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-blue-500" />Лиды</span>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-emerald-500" />Обработано за 2 ч</span>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-amber-500" />Оплаты</span>
         <span className="ml-auto">Реакция: {data[0]?.reaction} ч → {data[data.length - 1]?.reaction} ч</span>
       </div>
+    </div>
+  )
+}
+
+function GoldrattConstraintPreview({ facts }: { facts: GoldrattFacts }) {
+  return (
+    <div className="mt-2 grid gap-2 text-[11px] sm:grid-cols-3">
+      <MetricChip label="Вход" value={`${facts.leadVolume} лидов`} tone="slate" />
+      <MetricChip label="Проходит дальше" value={`${facts.processedVolume} заявок`} tone="blue" />
+      <MetricChip label="Копится в очереди" value={`${facts.stuckLeads} лидов`} tone="red" />
+    </div>
+  )
+}
+
+function GoldrattDoNotGrid() {
+  const items = [
+    ['Больше лидов', 'очередь перед первичным контактом растёт'],
+    ['Больше людей в продажах', 'не убирает ручную рутину и сбои на входе'],
+    ['Новый продукт', 'не ускоряет обработку уже входящих заявок'],
+  ]
+
+  return (
+    <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3">
+      {items.map(([title, text]) => (
+        <div key={title} className="rounded-2xl border px-2.5 py-2" style={{ borderColor: BORDER_SOFT, background: '#FFF9ED' }}>
+          <p className="font-semibold" style={{ color: '#9A3412' }}>{title}</p>
+          <p className="mt-1 leading-relaxed" style={{ color: '#7C2D12' }}>{text}</p>
+        </div>
+      ))}
     </div>
   )
 }
@@ -2786,7 +2830,7 @@ function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
       items: facts.actionPlan30.length > 0 ? facts.actionPlan30 : [
         'Добавить ресурс или автоматизацию на узкий этап',
         'Внедрить scoring входящих по профилю',
-        'Сравнить throughput до и после, найти следующее ограничение',
+        'Сравнить пропускную способность до и после, найти следующее ограничение',
       ],
       success: 'Больше лидов проходит первичный контакт, диагностики и оплаты растут, следующее ограничение видно в потоке.',
     },
@@ -2934,7 +2978,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Что делать первым',
         main: 'Не увеличивать рекламный бюджет, пока не разгружен входящий поток',
-        text: 'Спрос уже есть: система получает достаточно входящих заявок, чтобы расти быстрее. Но первый операционный этап не успевает быстро превращать этот спрос в диагностики и оплаты. Поэтому дополнительная реклама сейчас масштабирует не продажи, а очередь, просроченные касания и потерянную выручку. Первое решение — не “добыть больше лидов”, а сделать скорость реакции управляемой: зафиксировать SLA, перераспределить входящие заявки, убрать ручную рутину с менеджеров и не давать лидам лежать без статуса дольше нормы.',
+        text: 'Спрос уже есть, но первый операционный этап не успевает превращать его в диагностики и оплаты. Дополнительная реклама сейчас масштабирует очередь, просроченные касания и потерянную выручку. Первый шаг — зафиксировать регламент реакции, перераспределить входящие заявки и убрать ручную рутину с менеджеров.',
         icon: Target,
         tone: 'red',
         tags: ['SLA реакции', 'Очередь', 'Менеджеры', 'Не лить трафик'],
@@ -2943,7 +2987,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Что показывает поток',
         main: 'Проблема не в количестве лидов, а в пропускной способности входящего этапа',
-        text: 'До первичного контакта бизнес уже сделал дорогую часть работы: привёл спрос. Дальше поток сужается не потому, что лиды плохие, а потому, что система не успевает быстро забрать их в работу и провести дальше. Из-за этого следующие этапы выглядят то недогруженными, то нестабильными, хотя их проблема вторична: им просто не хватает качественного потока на входе. Пока первичный контакт не начнёт стабильно пропускать больше заявок без задержки, улучшения в продажах, КП или внедрении будут лечить симптомы, а не реальное ограничение.',
+        text: 'Самая дорогая работа уже сделана: спрос приведён. Поток сужается дальше не из-за качества лидов, а из-за того, что система медленно берёт их в работу. Поэтому следующие этапы выглядят недогруженными не потому, что они сильные, а потому что до них не доходит нормальный объём качественно обработанных заявок.',
         icon: Activity,
         tone: 'indigo',
         tags: ['Очередь до этапа', 'Потеря скорости', 'Недополученный поток'],
@@ -2952,7 +2996,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Почему это не маркетинг',
         main: 'Спрос есть, но система не переваривает входящий поток',
-        text: 'Если бы проблема была в маркетинге, рост лидов хотя бы частично поднимал бы диагностики и оплаты. Здесь происходит обратное: трафика становится больше, скорость реакции ухудшается, а деньги не растут вместе с входом. Это означает, что система ломается не до воронки, а внутри неё: на этапе, где заявки должны быстро превратиться в осмысленный следующий шаг. Ошибкой будет продолжать спорить о качестве трафика, пока сам процесс обработки не доказал, что способен переваривать уже существующий спрос.',
+        text: 'Если бы проблема была в маркетинге, рост лидов хотя бы частично поднимал бы диагностики и оплаты. Здесь происходит обратное: вход растёт, реакция ухудшается, а деньги стоят. Ошибка сейчас — продолжать спорить о качестве трафика, пока сам процесс обработки не доказал, что умеет быстро переваривать уже существующий спрос.',
         icon: BarChart3,
         tone: 'amber',
         tags: ['Спрос есть', 'Реакция падает', 'Оплаты стоят'],
@@ -2961,7 +3005,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Почему это опасно',
         main: 'Улучшение неограниченных этапов создаст больше работы, но не больше результата',
-        text: 'Если сейчас усиливать маркетинг, продукт или последующие этапы, команда станет заметно занятее, но бизнес не получит пропорционально больше денег. Узкое место останется на входе, а вся дополнительная активность превратится в незавершённую работу перед первичным контактом: больше лидов без ответа, больше потерянных касаний, больше хаоса в распределении. Опасность здесь не только в потере эффективности, но и в ложном ощущении прогресса: метрик активности станет больше, а throughput системы почти не сдвинется.',
+        text: 'Если усиливать маркетинг, продукт или последующие этапы до разгрузки первичного контакта, команда станет занятее, но денег почти не прибавится. Узкое место останется на входе, а вся дополнительная активность превратится в незавершённую работу: больше лидов без ответа, больше просроченных касаний и ложное ощущение прогресса.',
         icon: AlertTriangle,
         tone: 'amber',
         tags: ['Не лить трафик', 'Не плодить очередь', 'Не лечить не то'],
@@ -2985,9 +3029,9 @@ function GoldrattActionCard({ card }: { card: DetailCard }) {
         </div>
       </div>
       <p className="text-[1.02rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
-      <p className="flex-1 text-[0.94rem] leading-[1.62]" style={{ color: '#334155' }}>{action.text}</p>
+      <p className="text-[0.92rem] leading-[1.58]" style={{ color: '#334155' }}>{action.text}</p>
       {action.tags && action.tags.length > 0 && (
-        <div className="mt-auto flex flex-wrap gap-2 pt-1">
+        <div className="flex flex-wrap gap-2 pt-1">
           {action.tags.map((tag) => (
             <span key={tag} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}>
               {tag}
@@ -3219,7 +3263,8 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
   if (!facts) return null
 
   const fileName = facts.sourceMetadata['Источник'] ?? facts.sourceMetadata.Source ?? 'Источник не записан'
-  const sheetName = facts.sourceMetadata['Лист'] ?? facts.sourceMetadata.Sheet ?? '4 таблицы'
+  const sourceStructure = '4 связанные таблицы'
+  const sourceLabel = '4 таблицы источника'
   const qualityScore = facts.sourceMetadata['Quality score'] ?? '—'
   const period = facts.sourceMetadata['Период'] ?? 'Не указан'
   const tabClass = (active: boolean) =>
@@ -3260,13 +3305,13 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
         </div>
         {showScoreInfo && (
           <div className="mt-3 rounded-2xl border px-3 py-2.5 text-[11px] leading-relaxed" style={{ background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}>
-            <span className="font-semibold">88 — это не оценка бизнеса.</span> Это оценка полноты и пригодности данных именно для Goldratt-разбора. Здесь уже есть карта потока, динамика, загрузка команды и экономика потерь, поэтому ограничение видно достаточно уверенно. До 100 не хватает разреза по каждому лиду: причин отказа, каналов, фактического времени по менеджерам и связки «лид → диагностика → оплата» на уровне каждой заявки.
+            <span className="font-semibold">88/100 — это не оценка бизнеса.</span> Это оценка пригодности входных данных именно для разбора ограничения. Здесь уже есть карта этапов, вход и выход по потоку, ожидание, загрузка команды и динамика по месяцам, поэтому вероятное ограничение видно достаточно уверенно. До 100 не хватает полного финансового разреза по этапам, причин отказов по каждому лиду и точной связи между задержкой и потерянной выручкой.
             <div className="mt-2 grid gap-1 sm:grid-cols-2">
               <span>+ карта потока по этапам</span>
               <span>+ динамика по месяцам</span>
               <span>+ загрузка команды</span>
               <span>+ экономика потерь</span>
-              <span>− нет lead-level истории</span>
+              <span>− нет истории по каждой заявке</span>
               <span>− нет причин отказов по каждой заявке</span>
             </div>
           </div>
@@ -3277,9 +3322,9 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
         <div className="grid gap-2 text-xs sm:grid-cols-4">
           {[
             ['Файл', fileName],
-            ['Структура', '4 связанные таблицы'],
+            ['Структура', sourceStructure],
             ['Период', period],
-            ['Лист', sheetName],
+            ['Источник', sourceLabel],
           ].map(([label, value]) => (
             <div key={label} className="min-w-0 overflow-hidden rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
               <p className="font-semibold" style={{ color: TEXT3 }}>{label}</p>
@@ -3456,8 +3501,9 @@ function GoldrattDashboard({
       {pairedIds.map((id) => {
         const card = byId(id)
         if (!card) return null
+        const visualHeavy = id === 'flow' || id === 'evidence'
         return (
-          <div key={card.id} className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+          <div key={card.id} className={`grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] ${visualHeavy ? 'items-start' : 'items-stretch'}`}>
             <article
               role="button"
               tabIndex={0}
@@ -3500,7 +3546,9 @@ function GoldrattDashboard({
                 </button>
               </div>
             </article>
-            <GoldrattActionCard card={card} />
+            <div className={visualHeavy ? 'self-start' : 'h-full'}>
+              <GoldrattActionCard card={card} />
+            </div>
           </div>
         )
       })}
