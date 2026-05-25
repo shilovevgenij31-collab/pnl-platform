@@ -97,6 +97,7 @@ const EXCEL_EXTS = ['xlsx', 'xls']
 const TEXT_EXTS = ['txt', 'csv', 'md', 'json']
 const ALL_SUPPORTED_EXTS = [...EXCEL_EXTS, ...TEXT_EXTS]
 const TEMPLATE_URL = '/templates/pnl-template.xlsx'
+const GOLDRATT_TEMPLATE_URL = '/templates/goldratt-bottleneck-template.xlsx'
 const MAX_NORMALIZED_CHARS = 75_000
 const PREVIEW_ROWS = 20
 const PREVIEW_COLS = 15
@@ -2045,9 +2046,20 @@ function GoldrattSection({
 
       {/* 5. Description — upload + textarea */}
       <div>
-        <label className="block text-sm mb-2" style={{ color: TEXT2 }}>
-          Описание ситуации *
-        </label>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <label className="block text-sm" style={{ color: TEXT2 }}>
+            Описание ситуации *
+          </label>
+          <a
+            href={GOLDRATT_TEMPLATE_URL}
+            download
+            className="inline-flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-70"
+            style={{ color: cfg.accent }}
+          >
+            <FileText className="h-3 w-3" />
+            Скачать шаблон bottleneck
+          </a>
+        </div>
         <FileUploadZone
           variant="goldratt"
           onFileLoaded={onFileLoaded}

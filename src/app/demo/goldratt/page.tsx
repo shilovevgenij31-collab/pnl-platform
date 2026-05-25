@@ -1,5 +1,5 @@
 import ReportDisplay from '@/app/report/[id]/ReportDisplay'
-import { demoGoldrattReport } from '@/lib/demoReports'
+import { demoGoldrattReport, demoGoldrattSourceText } from '@/lib/demoReports'
 
 export const metadata = {
   title: 'Пример Goldratt-отчёта — Перезагрузка прибыльности',
@@ -8,10 +8,11 @@ export const metadata = {
 const demoData = {
   id: 'demo-goldratt',
   report: demoGoldrattReport,
-  company: 'РекрутПро (демо)',
-  date: '21 мая 2026',
+  company: 'FlowDesk AI (демо)',
+  date: '25 мая 2026',
   mode: 'Goldratt / TOC',
   agentType: 'goldratt' as const,
+  sourceText: demoGoldrattSourceText,
 }
 
 export default function DemoGoldrattPage() {

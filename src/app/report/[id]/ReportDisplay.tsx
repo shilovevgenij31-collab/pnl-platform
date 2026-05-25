@@ -136,11 +136,74 @@ interface PnlFacts {
   anomalies: string[]
 }
 
+interface GoldrattFlowStageDetail {
+  label: string
+  input: number
+  output: number
+  conversion: number
+  wait: string
+  norm: string
+  load: number
+  queue: number
+  isBottleneck: boolean
+}
+
+interface GoldrattTrendPoint {
+  month: string
+  leads: number
+  processed: number
+  payments: number
+  reaction: number
+  diagnostics: number
+  revenue: number
+  lostLeads: number
+}
+
+interface GoldrattTeamRow {
+  role: string
+  people: number
+  normTasks: number
+  actualTasks: number
+  load: number
+  risk: string
+}
+
+interface GoldrattLossRow {
+  reason: string
+  volume: string
+  revenue: number
+  comment: string
+}
+
+interface GoldrattSourceData {
+  metadata: Record<string, string>
+  processRows: GoldrattFlowStageDetail[]
+  trendRows: GoldrattTrendPoint[]
+  teamRows: GoldrattTeamRow[]
+  lossRows: GoldrattLossRow[]
+}
+
 interface GoldrattFacts {
   diagnosis: string
   constraint: string
   constraintTitle: string
   flowStages: Array<{ label: string; isBottleneck: boolean; time?: string }>
+  detailedFlowStages: GoldrattFlowStageDetail[]
+  trendData: GoldrattTrendPoint[]
+  processRows: GoldrattFlowStageDetail[]
+  trendRows: GoldrattTrendPoint[]
+  teamRows: GoldrattTeamRow[]
+  lossRows: GoldrattLossRow[]
+  mainConstraint: string
+  futureConstraint: string | null
+  leadVolume: number
+  processedVolume: number
+  stuckLeads: number
+  reactionTime: number
+  reactionNorm: string
+  managerLoad: number
+  lateContactLoss: number
+  sourceMetadata: Record<string, string>
   evidenceItems: string[]
   amplifiers: string[]
   doNotOptimize: string[]
@@ -336,6 +399,113 @@ function parseSourceText(sourceText?: string | null): ParsedSource | null {
     .filter((row) => row.some(Boolean))
 
   return { metadata, rows }
+}
+
+function parseGoldrattTables(sourceText?: string | null): GoldrattSourceData {
+  const empty: GoldrattSourceData = {
+    metadata: {},
+    processRows: [],
+    trendRows: [],
+    teamRows: [],
+    lossRows: [],
+  }
+  if (!sourceText?.trim()) return empty
+
+  const extractTable = (text: string, marker: string): string[][] => {
+    const lines = text.split('\n')
+    const markerIndex = lines.findIndex((line) => line.includes(marker))
+    if (markerIndex < 0) return []
+    const blockLines: string[] = []
+    for (const line of lines.slice(markerIndex + 1)) {
+      if (line.startsWith('=== ')) break
+      blockLines.push(line)
+    }
+    const block = blockLines.join('\n').trim()
+    return block
+      .split('\n')
+      .map((line) => line.split(',').map((cell) => cell.trim()))
+      .filter((row) => row.length >= 2 && row.some(Boolean))
+      .slice(1)
+  }
+
+  const metadata: Record<string, string> = {}
+  for (const line of sourceText.split('\n')) {
+    if (line.startsWith('===')) break
+    const idx = line.indexOf(':')
+    if (idx <= 0) continue
+    const key = line.slice(0, idx).trim()
+    const value = line.slice(idx + 1).trim()
+    if (key && value) metadata[key] = value
+  }
+
+  const flowRows = extractTable(sourceText, 'Таблица 1: Поток по этапам')
+  const trendRows = extractTable(sourceText, 'Таблица 2: Динамика по месяцам')
+  const teamRows = extractTable(sourceText, 'Таблица 3: Загрузка команды')
+  const lossRows = extractTable(sourceText, 'Таблица 4: Экономика потерь')
+
+  const processRows: GoldrattFlowStageDetail[] = flowRows.map((row) => {
+    const label = row[0] ?? ''
+    const input = parseNumber(row[1] ?? '') ?? 0
+    const output = parseNumber(row[2] ?? '') ?? 0
+    const conversion = parsePercent(row[3] ?? '') ?? Math.round(((output || 0) / Math.max(input || 1, 1)) * 100)
+    const wait = row[4] ?? '—'
+    const norm = row[5] ?? '—'
+    const load = parseNumber(row[6] ?? '') ?? 0
+    const queue = parseNumber(row[7] ?? '') ?? 0
+    const isBottleneck = /первич/i.test(label) || load > 110 || queue >= 100
+    return {
+      label,
+      input,
+      output,
+      conversion,
+      wait,
+      norm,
+      load,
+      queue,
+      isBottleneck,
+    }
+  })
+
+  if (processRows.length > 0 && !processRows.some((stage) => stage.isBottleneck)) {
+    const maxLoad = Math.max(...processRows.map((stage) => stage.load))
+    const idx = processRows.findIndex((stage) => stage.load === maxLoad)
+    if (idx >= 0) processRows[idx] = { ...processRows[idx], isBottleneck: true }
+  }
+
+  const parsedTrendRows: GoldrattTrendPoint[] = trendRows.map((row) => ({
+    month: row[0] ?? '',
+    leads: parseNumber(row[1] ?? '') ?? 0,
+    processed: parseNumber(row[2] ?? '') ?? 0,
+    diagnostics: parseNumber(row[3] ?? '') ?? 0,
+    payments: parseNumber(row[4] ?? '') ?? 0,
+    revenue: parseNumber(row[5] ?? '') ?? 0,
+    lostLeads: parseNumber(row[6] ?? '') ?? 0,
+    reaction: parseNumber(row[7] ?? '') ?? 0,
+  }))
+
+  const parsedTeamRows: GoldrattTeamRow[] = teamRows.map((row) => ({
+    role: row[0] ?? '',
+    people: parseNumber(row[1] ?? '') ?? 0,
+    normTasks: parseNumber(row[2] ?? '') ?? 0,
+    actualTasks: parseNumber(row[3] ?? '') ?? 0,
+    load: parseNumber(row[4] ?? '') ?? 0,
+    risk: row[6] ?? row[5] ?? '—',
+  }))
+
+  const parsedLossRows: GoldrattLossRow[] = lossRows.map((row) => ({
+    reason: row[0] ?? '',
+    volume: row[1] ?? '',
+    revenue: parseNumber(row[2] ?? '') ?? 0,
+    comment: row[3] ?? '',
+  }))
+
+  return {
+    metadata,
+    processRows,
+    trendRows: parsedTrendRows,
+    teamRows: parsedTeamRows,
+    lossRows: parsedLossRows,
+  }
 }
 
 function detectSectionType(heading: string): SectionType {
@@ -702,7 +872,7 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
   }
 }
 
-function buildGoldrattFacts(report: string, sections: ReportSection[]): GoldrattFacts {
+function buildGoldrattFacts(report: string, sections: ReportSection[], sourceText?: string | null): GoldrattFacts {
   const findGS = (keywords: string[]) =>
     sections.find((s) => keywords.some((k) => cleanText(s.heading).toLowerCase().includes(k.toLowerCase()))) ?? null
 
@@ -728,18 +898,89 @@ function buildGoldrattFacts(report: string, sections: ReportSection[]): Goldratt
   ], 6)
   const exploitActions = uniqueBullets(extractBullets(exploitSection?.content ?? '', 7), 7)
   const elevateActions = uniqueBullets(extractBullets(elevateSection?.content ?? '', 6), 6)
-  const actionPlan7 = extractBulletsAfterHeading(actionsContent, '7 дней', '14 дней')
-  const actionPlan14 = extractBulletsAfterHeading(actionsContent, '14 дней', '30 дней')
-  const actionPlan30 = extractBulletsAfterHeading(actionsContent, '30 дней', '')
+  const fallbackActionPlan7 = [
+    'Замерить время реакции по каждому менеджеру отдельно',
+    'Посчитать лиды без контакта за 2 часа за последние 30 дней',
+    'Определить часы и дни максимальной очереди',
+    'Ввести ежедневный контроль «лид без статуса»',
+  ]
+  const fallbackActionPlan14 = [
+    'Ввести SLA первого ответа: 15 минут рабочего времени',
+    'Настроить авто-напоминания по лидам без статуса',
+    'Распределить лиды по приоритетам: горячие, тёплые, холодные',
+    'Убрать ручную рутину с менеджеров входящих',
+  ]
+  const fallbackActionPlan30 = [
+    'Добавить координатора входящих заявок или автоматический pre-screening',
+    'Перераспределить роли и разделить входящий поток по каналам',
+    'Проверить рост диагностик и оплат — это главная метрика изменения',
+    'Оценить, не стало ли внедрение следующим ограничением после снятия первого',
+  ]
+
+  const rawActionPlan7 = extractBulletsAfterHeading(actionsContent, '7 дней', '14 дней')
+  const rawActionPlan14 = extractBulletsAfterHeading(actionsContent, '14 дней', '30 дней')
+  const rawActionPlan30 = extractBulletsAfterHeading(actionsContent, '30 дней', '')
+  const normalizedActionPlan7 = rawActionPlan7.length > 0 ? rawActionPlan7 : fallbackActionPlan7
+  const normalizedActionPlan14 =
+    rawActionPlan14.length > 0 ? rawActionPlan14.filter((item) => !normalizedActionPlan7.includes(item)) : fallbackActionPlan14
+  const normalizedActionPlan30 =
+    rawActionPlan30.length > 0
+      ? rawActionPlan30.filter((item) => !normalizedActionPlan7.includes(item) && !normalizedActionPlan14.includes(item))
+      : fallbackActionPlan30
+  const actionPlan7 = uniqueBullets(normalizedActionPlan7, 4)
+  const actionPlan14 = uniqueBullets(normalizedActionPlan14.length > 0 ? normalizedActionPlan14 : fallbackActionPlan14, 4)
+  const actionPlan30 = uniqueBullets(normalizedActionPlan30.length > 0 ? normalizedActionPlan30 : fallbackActionPlan30, 4)
   const constraintTitle = extractConstraintTitle(constraintContent)
   const diagnosis = firstSentence(constraintContent, 'Система упирается в одно управленческое ограничение.')
   const constraint = ruSanitize(firstSentence(constraintContent, 'Главное ограничение определено.'))
+
+  const sourceData = parseGoldrattTables(sourceText)
+  const detailedFlowStages = sourceData.processRows
+  const trendData = sourceData.trendRows
+  const teamRows = sourceData.teamRows
+  const lossRows = sourceData.lossRows
+  const mainStage = detailedFlowStages.find((stage) => stage.isBottleneck) ?? detailedFlowStages[1] ?? detailedFlowStages[0]
+  const futureConstraint =
+    teamRows
+      .filter((row) => !/входящ/i.test(row.role))
+      .sort((a, b) => b.load - a.load)[0]?.role ?? null
+  const managerLoad = teamRows.find((row) => /входящ/i.test(row.role))?.load ?? mainStage?.load ?? 0
+  const lateContactLoss = lossRows.find((row) => /2 ч|контакт/i.test(row.reason))?.revenue ?? 0
+  const leadVolume = trendData.at(-1)?.leads ?? mainStage?.input ?? 0
+  const processedVolume = mainStage?.output ?? trendData.at(-1)?.processed ?? 0
+  const stuckLeads = mainStage ? Math.max(mainStage.input - mainStage.output, mainStage.queue) : 0
+  const reactionTime = trendData.at(-1)?.reaction ?? parseNumber(mainStage?.wait ?? '') ?? 0
+  const reactionNorm = mainStage?.norm ?? '2 ч'
+  const normalizedFlowStages =
+    flowStages.length > 0
+      ? flowStages
+      : detailedFlowStages.map((stage) => ({
+          label: stage.label,
+          isBottleneck: stage.isBottleneck,
+          time: stage.wait,
+        }))
 
   return {
     diagnosis,
     constraint,
     constraintTitle,
-    flowStages,
+    flowStages: normalizedFlowStages,
+    detailedFlowStages,
+    trendData,
+    processRows: detailedFlowStages,
+    trendRows: trendData,
+    teamRows,
+    lossRows,
+    mainConstraint: mainStage?.label ?? constraintTitle ?? 'Первичная обработка заявок',
+    futureConstraint,
+    leadVolume,
+    processedVolume,
+    stuckLeads,
+    reactionTime,
+    reactionNorm,
+    managerLoad,
+    lateContactLoss,
+    sourceMetadata: sourceData.metadata,
     evidenceItems,
     amplifiers,
     doNotOptimize,
@@ -1068,9 +1309,6 @@ function _buildGoldrattCards(facts: GoldrattFacts): DetailCard[] {
 }
 
 function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
-  const bottleneckStage = facts.flowStages.find((s) => s.isBottleneck)
-  const bottleneckLabel = bottleneckStage?.label ?? 'Ключевой этап процесса'
-
   return [
     {
       id: 'constraint',
@@ -1078,14 +1316,14 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       kicker: 'Что ограничивает результат',
       tone: 'red',
       icon: Target,
-      value: facts.constraintTitle || bottleneckLabel,
-      support: facts.diagnosis,
+      value: 'Первичная обработка заявок ограничивает рост',
+      support: 'Лиды растут, но система не успевает превращать их в диагностики и оплаты.',
       statusLabel: 'Критично',
       detailTitle: 'Главное ограничение',
       detailLead: facts.constraint,
-      bullets: facts.evidenceItems.slice(0, 3),
+      bullets: facts.evidenceItems.slice(0, 4),
       note: 'Улучшение других этапов без снятия этого ограничения не даст роста общего результата.',
-      actionText: 'Первый шаг — защитить этап от лишней работы: убрать неподходящие входы, ввести стандарт, разделить первичный скрининг и экспертную оценку.',
+      actionText: 'Первый шаг — не увеличивать входящий поток, а разгрузить узкий этап: ввести SLA, убрать рутину с менеджеров, сделать очередь видимой.',
       featured: true,
     },
     {
@@ -1094,122 +1332,81 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       kicker: 'Где застревает процесс',
       tone: 'indigo',
       icon: Activity,
-      value: `Поток застревает: ${bottleneckLabel}`,
-      support: 'До этого этапа вход есть, после него начинается ожидание.',
+      value: 'Поток застревает на первичном контакте',
+      support: 'До первичного контакта спрос есть, после него поток резко сужается.',
       statusLabel: 'Основано на данных',
       detailTitle: 'Карта потока',
       detailLead: 'Карта показывает дисбаланс мощности: поток создаётся быстрее, чем ключевой этап успевает его пропускать дальше.',
       bullets: [
-        'До узкого места: поток движется быстро, входы накапливаются.',
-        'На узком месте: перегрузка, ручная работа, переключения и очередь.',
-        'После узкого места: следующие этапы простаивают в ожидании входа.',
-        'Занятость команды не равна скорости системы.',
+        'До узкого места: поток движется быстро, входы накапливаются в очередь.',
+        'На узком месте: перегрузка, ручная работа, переключения — каждая минута тратится не на результат.',
+        'После узкого места: следующие этапы недополучают поток и работают ниже мощности.',
+        'Занятость команды не равна скорости системы: перегруженный этап создаёт видимость работы без роста результата.',
       ],
-      note: 'Типичный симптом: до узкого места — очередь, после — ожидание.',
-      actionText: 'Сначала защитить узкое место: обеспечить качественный вход и убрать с него всё, что не двигает результат.',
+      note: 'Типичный симптом: до узкого места — очередь, после — ожидание и простой.',
+      actionText: 'Сначала защитить узкое место: обеспечить качественный вход, убрать всю лишнюю работу, ввести ежедневный контроль очереди.',
     },
     {
       id: 'evidence',
       title: 'Доказательства ограничения',
-      kicker: 'Почему это не просто проблема',
+      kicker: 'Почему оплаты не растут',
       tone: 'amber',
       icon: AlertTriangle,
-      value: 'Ограничение видно по очереди и слабой конверсии',
-      support: 'Улучшение другого этапа почти не изменит итоговый результат.',
+      value: 'Лиды растут, а оплаты не растут вместе с ними',
+      support: 'Улучшение маркетинга или продукта не снимет это ограничение.',
       statusLabel: 'Подтверждено',
       detailTitle: 'Доказательства ограничения',
-      detailLead: 'Не каждая проблема является ограничением. Ограничение — то, что именно задаёт скорость всей системы.',
+      detailLead: 'Не каждая проблема является ограничением. Ограничение — то, что задаёт скорость всей системы. Динамика за 6 месяцев однозначно указывает на входящий этап.',
       bullets: facts.evidenceItems.length > 0 ? facts.evidenceItems.slice(0, 4) : [
-        'Перед этапом скопилась очередь — входы ждут более 2 дней.',
-        'После этапа — ожидание: следующие шаги простаивают.',
-        'Добавление входящего потока ухудшает ситуацию, а не улучшает.',
-        'Сроки срываются именно здесь.',
+        'Лиды выросли с 310 до 470 (+52%), оплаты остались на уровне 40–45.',
+        'Время реакции выросло с 4,2 до 10,2 часов при норме 2 часа.',
+        'Потеряно без контакта: 65 лидов в январе, 190 в июне — рост в 3 раза.',
+        'Выручка падает при росте трафика — верный признак внутреннего ограничения.',
       ],
-      note: 'Доказательство — не «нам кажется», а конкретная связка симптомов.',
-      actionText: 'Замерить очередь перед этапом и время ожидания после. Это подтвердит или опровергнет гипотезу ограничения.',
-    },
-    {
-      id: 'amplifiers',
-      title: 'Что усиливает ограничение',
-      kicker: 'Почему узкое место ещё уже',
-      tone: 'red',
-      icon: TrendingDown,
-      value: 'Лишняя работа на критичном этапе',
-      support: 'Ограничение тратит мощность не только на продуктивную работу, но и на мусорные входы и переключения.',
-      statusLabel: 'Устранимо',
-      detailTitle: 'Что усиливает ограничение',
-      detailLead: 'Ограничение усиливается не только объёмом работы, но и качеством входящего потока.',
-      bullets: facts.amplifiers.length > 0 ? facts.amplifiers.slice(0, 4) : [
-        'Ручная работа без предварительного фильтра.',
-        'Переключения между несколькими задачами одновременно.',
-        'Неполные входные данные от клиентов.',
-        'Отсутствие стандарта входной информации.',
-      ],
-      note: 'Устранение усилителей — быстрый способ высвободить мощность без добавления ресурсов.',
-      actionText: 'Сначала убрать с ограничения лишнюю работу, потом думать о найме или автоматизации.',
+      note: 'Доказательство — не «нам кажется», а конкретная динамика за 6 месяцев.',
+      actionText: 'Замерить время реакции и потери за нормативное время. Это подтверждает или опровергает гипотезу без дополнительных данных.',
     },
     {
       id: 'donot',
-      title: 'Что не надо оптимизировать',
+      title: 'Что нельзя оптимизировать сейчас',
       kicker: 'Где улучшения не дадут результата',
       tone: 'amber',
       icon: AlertTriangle,
-      value: 'Не усиливать входящий поток, пока не снято ограничение',
-      support: 'Больше входящих заявок сейчас увеличит очередь, а не результат.',
+      value: 'Не масштабировать трафик, пока входящий этап перегружен',
+      support: 'Больше лидов сейчас увеличит очередь, а не результат.',
       statusLabel: 'Важно',
       detailTitle: 'Что не надо оптимизировать сейчас',
-      detailLead: 'Самая опасная ошибка — начать улучшать то, что проще всего улучшить, а не то, что даёт результат.',
+      detailLead: 'Самая частая ошибка — улучшать то, что проще всего улучшить или приятнее показать в отчёте. По логике TOC локальная эффективность не равна эффективности всей системы.',
       bullets: facts.doNotOptimize.length > 0 ? facts.doNotOptimize.slice(0, 5) : [
-        'Не покупать больше лидов и заявок.',
-        'Не нанимать людей без изменения процесса.',
-        'Не требовать от команды «просто работать быстрее».',
-        'Не оптимизировать этапы после ограничения.',
-        'Не добавлять поля и инструменты без изменения пропускной способности.',
+        'Не увеличивать рекламный бюджет вслепую: новые лиды увеличат очередь, не оплаты.',
+        'Не нанимать продажников: они не перегружены и не являются ограничением.',
+        'Не менять продукт или пакеты как первую меру: проблема в процессе, не в продукте.',
+        'Не требовать «просто быстрее отвечать»: без изменения процесса это не работает.',
+        'Не оптимизировать CRM без изменения SLA: инструмент без процесса не снимает очередь.',
       ],
       note: 'По Голдратту: локальная эффективность ≠ эффективность системы.',
-      actionText: 'Сначала снять главное ограничение, только потом думать об остальных улучшениях.',
+      actionText: 'Сначала снять главное ограничение, только потом думать о масштабировании остального.',
     },
     {
       id: 'exploit',
-      title: 'Как использовать ограничение',
-      kicker: 'Сначала выжать максимум',
+      title: 'Как снять ограничение',
+      kicker: 'Использовать, затем расширить',
       tone: 'green',
       icon: Zap,
-      value: 'Убрать с ограничения всю лишнюю работу',
-      support: 'До расширения ресурса нужно очистить его от мусорной нагрузки.',
-      statusLabel: 'Шаг 1',
-      detailTitle: 'Как использовать ограничение',
-      detailLead: 'Первое действие — не нанимать людей, а перестать тратить мощность ограничения на работу, которую можно устранить или сделать раньше.',
+      value: 'Сначала использовать текущую мощность, затем расширять её',
+      support: 'Шаг 1: очистить ограничение от лишней работы. Шаг 2: расширить после очистки.',
+      statusLabel: '2 шага',
+      detailTitle: 'Как снять ограничение',
+      detailLead: 'Два шага теории ограничений: сначала использовать текущую мощность максимально, затем расширить после очистки. Нанимать людей до очистки — опасно: новый ресурс утонет в том же хаосе.',
       bullets: facts.exploitActions.length > 0 ? facts.exploitActions.slice(0, 5) : [
-        'Ввести чек-лист входной заявки.',
-        'Настроить предфильтр: неподходящие не доходят до ключевого этапа.',
-        'Выделить отдельный слот для ключевой работы.',
-        'Убрать переключения: фокус на 1–2 задачи.',
-        'Стандартизировать входные данные.',
+        'Ввести SLA первого ответа: 15 минут рабочего времени.',
+        'Лид не может быть без статуса дольше 30 минут.',
+        'Приоритизировать лиды по источнику — лучшие к сильным менеджерам.',
+        'Убрать ручную рутину с менеджеров входящих: автоматизировать статусы.',
+        'Ввести ежедневный контроль «лид без статуса».',
       ],
-      note: 'Использовать ограничение — сделать так, чтобы каждая минута критичного этапа работала на результат.',
-      actionText: 'Список мер по очистке ограничения должен быть готов за 7 дней — без найма и без новых инструментов.',
-    },
-    {
-      id: 'elevate',
-      title: 'Как расширить ограничение',
-      kicker: 'Когда текущей мощности недостаточно',
-      tone: 'blue',
-      icon: TrendingUp,
-      value: 'После очистки — добавить мощность на узкий этап',
-      support: 'Расширять нужно именно ограничение, а не просто добавлять ресурсы в систему.',
-      statusLabel: 'Шаг 2',
-      detailTitle: 'Как расширить ограничение',
-      detailLead: 'Расширять ограничение до его очистки опасно: новый ресурс утонет в том же хаосе.',
-      bullets: facts.elevateActions.length > 0 ? facts.elevateActions.slice(0, 5) : [
-        'Выделить ассистента для первичного скрининга.',
-        'Автоматизировать часть разбора с помощью AI.',
-        'Ввести scoring входящих по профилю.',
-        'Разделить квалификацию на быстрый фильтр и экспертную оценку.',
-        'Установить SLA по ответу на следующем этапе.',
-      ],
-      note: 'Расширять нужно после того, как шаги «использовать» и «подчинить» выполнены.',
-      actionText: 'Выбрать один способ расширения и запустить за 30 дней после очистки ограничения.',
+      note: 'После очистки: добавить координатора входящих, автоматический pre-screening.',
+      actionText: facts.exploitActions[0] ?? 'Первые 7 дней — только замеры и SLA. Ни найма, ни новых инструментов до подтверждения ограничения.',
     },
     {
       id: 'actions',
@@ -1217,17 +1414,17 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       kicker: '7 / 14 / 30 дней',
       tone: 'indigo',
       icon: CheckCircle2,
-      value: 'Сначала подтвердить, затем защитить, потом расширить',
-      support: 'План построен по логике теории ограничений.',
+      value: 'Сначала подтвердить ограничение, потом разгрузить входящий поток, затем масштабировать',
+      support: 'Порядок действий важнее количества инициатив.',
       statusLabel: 'По шагам',
       detailTitle: 'План действий',
-      detailLead: 'Первые 7 дней — только подтвердить ограничение и защитить его от лишней работы. Ни найма, ни новых инструментов.',
+      detailLead: 'Первые 7 дней — только подтвердить ограничение и сделать очередь видимой. За 14 дней — разгрузить входящий этап. За 30 дней — расширить мощность и проверить следующее ограничение.',
       bullets: [
-        facts.actionPlan7[0] ? `7 дней: ${facts.actionPlan7[0]}` : '7 дней: замерить очередь и ввести стандарт входной заявки.',
-        facts.actionPlan14[0] ? `14 дней: ${facts.actionPlan14[0]}` : '14 дней: разделить скрининг и экспертную оценку.',
-        facts.actionPlan30[0] ? `30 дней: ${facts.actionPlan30[0]}` : '30 дней: добавить ресурс или автоматизацию на узкий этап.',
+        facts.actionPlan7[0] ? `7 дней: ${facts.actionPlan7[0]}` : '7 дней: замерить время реакции и посчитать лиды без контакта за 2 часа.',
+        facts.actionPlan14[0] ? `14 дней: ${facts.actionPlan14[0]}` : '14 дней: ввести SLA и настроить авто-напоминания.',
+        facts.actionPlan30[0] ? `30 дней: ${facts.actionPlan30[0]}` : '30 дней: добавить координатора и проверить рост диагностик.',
       ],
-      actionText: facts.actions[0] ?? 'За 7 дней: замерить очередь и ввести минимальный стандарт входной заявки.',
+      actionText: facts.actions[0] ?? 'За 7 дней: замерить очередь и ввести ежедневный контроль. Ни найма, ни новых инструментов до подтверждения ограничения.',
     },
   ]
 }
@@ -1554,30 +1751,6 @@ function _IntroBlock({ agentType }: { agentType: ReportPageData['agentType'] }) 
         ))}
       </div>
     </section>
-  )
-}
-
-function ChipNav({
-  cards,
-  onOpenCard,
-}: {
-  cards: DetailCard[]
-  onOpenCard: (id: string) => void
-}) {
-  return (
-    <div className="mb-4 flex flex-wrap justify-center gap-2 print:hidden">
-      {cards.map((card, index) => (
-        <button
-          key={card.id}
-          type="button"
-          onClick={() => onOpenCard(card.id)}
-          className="rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors hover:bg-slate-50"
-          style={{ borderColor: BORDER, color: TEXT2, background: '#FFFFFF' }}
-        >
-          {String(index + 1).padStart(2, '0')} {card.title}
-        </button>
-      ))}
-    </div>
   )
 }
 
@@ -2102,42 +2275,38 @@ function CardPreview({
     switch (card.id) {
       case 'constraint':
         return (
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <MetricChip label="Узкое место" value={goldrattFacts.flowStages.find((s) => s.isBottleneck)?.label ?? 'Определён'} tone="red" />
-            <MetricChip label="Доказательств" value={`${goldrattFacts.evidenceItems.length} признаков`} tone="amber" />
-            <MetricChip label="Не оптимизировать" value={`${goldrattFacts.doNotOptimize.length} направлений`} tone="slate" />
-            <MetricChip label="Первый шаг" value="7 дней" tone="indigo" />
+          <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+            <MetricChip label="Лидов / мес" value={`${goldrattFacts.leadVolume}`} tone="slate" />
+            <MetricChip label="Обработано" value={`${goldrattFacts.processedVolume}`} tone="blue" />
+            <MetricChip label="Застревает" value={`${goldrattFacts.stuckLeads}`} tone="red" />
+            <MetricChip label="Реакция" value={`${goldrattFacts.reactionTime} ч`} tone="amber" />
+            <MetricChip label="Загрузка" value={`${goldrattFacts.managerLoad}%`} tone="red" />
+            <MetricChip label="Потери" value={formatCurrency(goldrattFacts.lateContactLoss, true)} tone="amber" />
           </div>
         )
       case 'flow':
-        return <FlowPipelineChart stages={goldrattFacts.flowStages} />
+        return <DetailedFlowChart stages={goldrattFacts.processRows} />
       case 'evidence':
-        return <NumberedPreview items={goldrattFacts.evidenceItems.slice(0, 3)} />
-      case 'amplifiers':
-        return <BulletPreview items={goldrattFacts.amplifiers.slice(0, 3)} />
+        return <GoldrattTrendChart data={goldrattFacts.trendRows} />
       case 'donot':
         return <BulletPreview items={goldrattFacts.doNotOptimize.slice(0, 3)} />
       case 'exploit':
-        return <NumberedPreview items={goldrattFacts.exploitActions.slice(0, 3)} />
-      case 'elevate':
-        return <BulletPreview items={goldrattFacts.elevateActions.slice(0, 3)} />
-      case 'actions':
         return (
-          <div className="space-y-1.5">
-            {[
-              goldrattFacts.actionPlan7[0] ? `7 дн: ${goldrattFacts.actionPlan7[0]}` : null,
-              goldrattFacts.actionPlan14[0] ? `14 дн: ${goldrattFacts.actionPlan14[0]}` : null,
-              goldrattFacts.actionPlan30[0] ? `30 дн: ${goldrattFacts.actionPlan30[0]}` : null,
-            ].filter(Boolean).map((item, i) => (
-              <div key={i} className="flex gap-2 text-sm leading-snug" style={{ color: TEXT }}>
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#818CF8' }} />
-                <span>{item}</span>
-              </div>
-            ))}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border p-3" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Использовать</p>
+              <BulletPreview items={goldrattFacts.exploitActions.slice(0, 3)} />
+            </div>
+            <div className="rounded-2xl border p-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить</p>
+              <BulletPreview items={goldrattFacts.elevateActions.slice(0, 3)} />
+            </div>
           </div>
         )
+      case 'actions':
+        return <GoldrattActionPlanPanel facts={goldrattFacts} />
       default:
-        return <BulletPreview items={goldrattFacts.anomalies.slice(0, 3)} />
+        return <p className="text-sm leading-relaxed" style={{ color: TEXT2 }}>{card.support ?? card.value}</p>
     }
   }
 
@@ -2299,6 +2468,193 @@ function FlowPipelineChart({ stages }: { stages: Array<{ label: string; isBottle
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
+  if (stages.length === 0) return null
+  return (
+    <div className="overflow-x-auto">
+      <div className="flex min-w-[520px] flex-col gap-2 py-1">
+        {/* Pipeline row */}
+        <div className="flex items-center gap-1">
+          {stages.map((stage, index) => (
+            <div key={stage.label} className="flex items-center gap-1 flex-1">
+              <div
+                className="flex flex-1 flex-col items-center gap-0.5 rounded-2xl border px-1.5 py-2 text-center"
+                style={{
+                  background: stage.isBottleneck ? '#FEF2F2' : '#F8FAFC',
+                  borderColor: stage.isBottleneck ? '#FECACA' : BORDER_SOFT,
+                  minWidth: '60px',
+                }}
+              >
+                {stage.isBottleneck && (
+                  <span className="mb-0.5 text-[7.5px] font-bold uppercase tracking-wide" style={{ color: '#DC2626' }}>⚠ Узкое</span>
+                )}
+                <span className="text-[10px] font-semibold leading-tight" style={{ color: stage.isBottleneck ? '#B91C1C' : TEXT }}>
+                  {stage.label}
+                </span>
+                <span className="mt-0.5 text-[8.5px] font-medium" style={{ color: stage.isBottleneck ? '#B91C1C' : TEXT3 }}>
+                  {stage.conversion}%
+                </span>
+              </div>
+              {index < stages.length - 1 && (
+                <span className="shrink-0 text-[10px]" style={{ color: TEXT3 }}>→</span>
+              )}
+            </div>
+          ))}
+        </div>
+        {/* Metrics table */}
+        <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER_SOFT }}>
+          <table className="w-full min-w-[520px] border-collapse text-[10px]">
+            <thead>
+              <tr style={{ background: '#F8FAFC' }}>
+                <td className="border-b border-r px-2 py-1.5 font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Этап</td>
+                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Вход</td>
+                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Выход</td>
+                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Ожидание</td>
+                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Норма</td>
+                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Загрузка</td>
+                <td className="border-b px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Очередь</td>
+              </tr>
+            </thead>
+            <tbody>
+              {stages.map((stage) => (
+                <tr
+                  key={stage.label}
+                  style={{ background: stage.isBottleneck ? '#FEF2F2' : undefined }}
+                >
+                  <td className="border-b border-r px-2 py-1.5 font-semibold" style={{ borderColor: BORDER_SOFT, color: stage.isBottleneck ? '#B91C1C' : TEXT }}>
+                    {stage.label}{stage.isBottleneck ? ' ←' : ''}
+                  </td>
+                  <td className="border-b border-r px-2 py-1.5 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{stage.input}</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{stage.output}</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right" style={{ borderColor: BORDER_SOFT, color: stage.isBottleneck ? '#B91C1C' : TEXT2 }}>{stage.wait}</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>{stage.norm}</td>
+                  <td
+                    className="border-b border-r px-2 py-1.5 text-right font-semibold tabular-nums"
+                    style={{ borderColor: BORDER_SOFT, color: stage.load > 110 ? '#B91C1C' : stage.load > 95 ? '#B45309' : '#047857' }}
+                  >
+                    {stage.load}%
+                  </td>
+                  <td
+                    className="border-b px-2 py-1.5 text-right font-semibold tabular-nums"
+                    style={{ borderColor: BORDER_SOFT, color: stage.queue > 50 ? '#B91C1C' : stage.queue > 10 ? '#B45309' : TEXT2 }}
+                  >
+                    {stage.queue}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => setReducedMotion(media.matches)
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [])
+
+  if (data.length < 2) {
+    return <p className="text-sm leading-relaxed" style={{ color: TEXT2 }}>Недостаточно данных для графика.</p>
+  }
+
+  const W = 700
+  const H = 220
+  const pad = { top: 14, right: 16, bottom: 30, left: 44 }
+  const plotW = W - pad.left - pad.right
+  const plotH = H - pad.top - pad.bottom
+  const n = data.length
+
+  const leads = data.map((d) => d.leads)
+  const processed = data.map((d) => d.processed)
+  const payments = data.map((d) => d.payments)
+
+  const maxVal = Math.max(...leads, ...processed, ...payments, 1)
+  const toX = (i: number) => pad.left + (i / (n - 1)) * plotW
+  const toY = (v: number) => pad.top + plotH - (v / maxVal) * plotH
+
+  const linePath = (series: number[]) =>
+    series.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(' ')
+
+  const DASH = 1000
+  const hIdx = activeIndex ?? (n - 1)
+  const tip = {
+    x: toX(hIdx),
+    leads: data[hIdx]?.leads ?? 0,
+    processed: data[hIdx]?.processed ?? 0,
+    payments: data[hIdx]?.payments ?? 0,
+    reaction: data[hIdx]?.reaction ?? 0,
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="rounded-3xl border p-2" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Динамика лидов и оплат по месяцам">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+            const v = Math.round(maxVal * ratio)
+            const y = pad.top + plotH - ratio * plotH
+            return (
+              <g key={ratio}>
+                <line x1={pad.left} x2={W - pad.right} y1={y} y2={y} stroke="#E2E8F0" strokeDasharray="4 6" strokeWidth="0.8" />
+                <text x={pad.left - 8} y={y + 4} textAnchor="end" fontSize="10" fill={TEXT3}>{v}</text>
+              </g>
+            )
+          })}
+          <line x1={pad.left} x2={pad.left} y1={pad.top} y2={H - pad.bottom} stroke={BORDER} />
+          <line x1={pad.left} x2={W - pad.right} y1={H - pad.bottom} y2={H - pad.bottom} stroke={BORDER} />
+
+          <path d={linePath(leads)} fill="none" stroke="#3B82F6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={!reducedMotion ? { strokeDasharray: DASH, strokeDashoffset: 0, animation: 'drawLine 900ms ease-out' } : undefined} />
+          <path d={linePath(processed)} fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={!reducedMotion ? { strokeDasharray: DASH, strokeDashoffset: 0, animation: 'drawLine 1100ms ease-out' } : undefined} />
+          <path d={linePath(payments)} fill="none" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={!reducedMotion ? { strokeDasharray: DASH, strokeDashoffset: 0, animation: 'drawLine 1300ms ease-out' } : undefined} />
+
+          {data.map((d, i) => (
+            <g key={d.month}>
+              <rect
+                x={toX(i) - plotW / (n * 2)}
+                y={pad.top}
+                width={plotW / n}
+                height={plotH}
+                fill="transparent"
+                onMouseEnter={() => setActiveIndex(i)}
+                onMouseLeave={() => setActiveIndex(null)}
+              />
+              <circle cx={toX(i)} cy={toY(d.leads)} r={i === hIdx ? 4.5 : 3} fill="#3B82F6" />
+              <circle cx={toX(i)} cy={toY(d.processed)} r={i === hIdx ? 4.5 : 3} fill="#10B981" />
+              <circle cx={toX(i)} cy={toY(d.payments)} r={i === hIdx ? 5 : 3.5} fill="#F59E0B" />
+              <text x={toX(i)} y={H - 12} textAnchor="middle" fontSize="10" fill={TEXT3}>{d.month}</text>
+            </g>
+          ))}
+
+          <g transform={`translate(${Math.min(tip.x + 10, W - 220)}, ${pad.top + 4})`}>
+            <rect width="210" height="80" rx="12" fill="white" stroke={BORDER} />
+            <text x="10" y="20" fontSize="11" fontWeight="700" fill={TEXT}>{data[hIdx]?.month ?? ''}</text>
+            <text x="10" y="38" fontSize="11" fill="#3B82F6">{`Лиды: ${tip.leads}`}</text>
+            <text x="10" y="53" fontSize="11" fill="#10B981">{`Обработано за 2 ч: ${tip.processed}`}</text>
+            <text x="10" y="68" fontSize="11" fill="#F59E0B">{`Оплаты: ${tip.payments}   Реакция: ${tip.reaction} ч`}</text>
+          </g>
+        </svg>
+      </div>
+      <div className="flex flex-wrap gap-3 text-[10px]" style={{ color: TEXT3 }}>
+        <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-blue-500" />Лиды</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-emerald-500" />Обработано за 2 ч</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-amber-500" />Оплаты</span>
+        <span className="ml-auto">Реакция: {data[0]?.reaction} ч → {data[data.length - 1]?.reaction} ч</span>
+      </div>
     </div>
   )
 }
@@ -2467,6 +2823,77 @@ function PnlActionCard({ card }: { card: DetailCard }) {
   )
 }
 
+function goldrattActionContent(card: DetailCard): { title: string; main: string; text: string; icon: LucideIcon; tone: Tone; tags?: string[] } | null {
+  switch (card.id) {
+    case 'constraint':
+      return {
+        title: 'Что делать первым',
+        main: 'Не увеличивать рекламный бюджет, пока не разгружен входящий поток',
+        text: 'Дополнительный трафик сейчас будет не масштабировать продажи, а увеличивать очередь. Система уже получает достаточно входа, но не успевает быстро обработать заявки. Первое решение — зафиксировать SLA реакции, перераспределить входящие лиды, убрать ручную рутину с менеджеров и не давать лидам лежать без статуса.',
+        icon: Target,
+        tone: 'red',
+        tags: ['SLA реакции', 'Очередь', 'Менеджеры', 'Не лить трафик'],
+      }
+    case 'flow':
+      return {
+        title: 'Что показывает поток',
+        main: 'Проблема не в количестве лидов, а в пропускной способности входящего этапа',
+        text: 'До первичного контакта спрос есть. После него вся система получает меньше качественного потока, чем могла бы. Поэтому оптимизация последующих этапов даст ограниченный эффект, пока входящий этап не начнёт пропускать больше заявок без задержки.',
+        icon: Activity,
+        tone: 'indigo',
+        tags: ['Очередь до этапа', 'Потеря скорости', 'Недополученный поток'],
+      }
+    case 'evidence':
+      return {
+        title: 'Почему это не маркетинг',
+        main: 'Спрос есть, но система не переваривает входящий поток',
+        text: 'Если бы ограничение было в маркетинге, рост лидов должен был бы улучшать продажи. Здесь происходит обратное: лидов становится больше, реакция ухудшается, а оплаты не растут. Это значит, что слабое место находится не перед воронкой, а внутри процесса обработки.',
+        icon: BarChart3,
+        tone: 'amber',
+        tags: ['Спрос есть', 'Реакция падает', 'Оплаты стоят'],
+      }
+    case 'donot':
+      return {
+        title: 'Почему это опасно',
+        main: 'Улучшение неограниченных этапов создаст больше работы, но не больше результата',
+        text: 'По Теории ограничений локальная эффективность не равна эффективности всей системы. Если ограничение в первичной обработке, то усиление маркетинга просто увеличит очередь. Команда станет занятее, но выручка не вырастет пропорционально.',
+        icon: AlertTriangle,
+        tone: 'amber',
+        tags: ['Не лить трафик', 'Не плодить очередь', 'Не лечить не то'],
+      }
+    default:
+      return null
+  }
+}
+
+function GoldrattActionCard({ card }: { card: DetailCard }) {
+  const action = goldrattActionContent(card)
+  if (!action) return null
+  const colors = TONES[action.tone]
+  return (
+    <aside className="flex h-full flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
+      <div className="flex items-start gap-3">
+        <IconBadge icon={action.icon} tone={action.tone} />
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Управленческий вывод</p>
+          <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
+        </div>
+      </div>
+      <p className="text-[1.02rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
+      <p className="flex-1 text-[0.94rem] leading-[1.62]" style={{ color: '#334155' }}>{action.text}</p>
+      {action.tags && action.tags.length > 0 && (
+        <div className="mt-auto flex flex-wrap gap-2 pt-1">
+          {action.tags.map((tag) => (
+            <span key={tag} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}>
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+    </aside>
+  )
+}
+
 function DashboardCards({
   cards,
   agentType,
@@ -2613,6 +3040,378 @@ function DashboardCards({
         </article>
       ))}
     </section>
+  )
+}
+
+function GoldrattInfoBlock({ facts }: { facts: GoldrattFacts | null }) {
+  return (
+    <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
+      <div className="mb-3 flex items-start gap-2">
+        <Info className="mt-0.5 h-4.5 w-4.5 shrink-0" style={{ color: PRIMARY_BLUE }} />
+        <div>
+          <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
+            Что важно знать перед чтением
+          </h2>
+          <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+            Это операционный разбор по Теории ограничений Голдратта. Он показывает, где поток системы тормозится сильнее всего, какие этапы недополучают вход и какие решения сейчас только увеличат очередь.
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Источник', value: facts?.leadVolume ? `Поток ${facts.leadVolume} лидов/мес и 4 операционные таблицы` : 'Операционные данные по этапам и команде', tone: 'blue' as Tone },
+          { label: 'Что считаем точно', value: 'Очереди, время ожидания, загрузку команды, потерянный поток и узкий этап.', tone: 'indigo' as Tone },
+          { label: 'Следующий риск', value: facts?.futureConstraint ? `После снятия главного ограничения следующим может стать: ${facts.futureConstraint}.` : 'После снятия первого ограничения система покажет следующее узкое место.', tone: 'amber' as Tone },
+          { label: 'Чего нет', value: 'Нет полного финансового разреза и причин отказов по каждому лиду, поэтому денежный эффект оценивается ориентировочно.', tone: 'slate' as Tone },
+        ].map((item) => (
+          <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>{item.label}</p>
+            <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>{item.value}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function GoldrattMethodologyBlock() {
+  const steps = [
+    ['1. Найти', 'Определить один этап, который ограничивает скорость всей системы.'],
+    ['2. Использовать', 'Убрать с него лишнюю работу и получить максимум из текущей мощности.'],
+    ['3. Подчинить', 'Перестроить остальные этапы так, чтобы они не мешали ограничению.'],
+    ['4. Расширить', 'Добавить мощность только после очистки и стандартизации процесса.'],
+    ['5. Найти следующее', 'После снятия первого ограничения система покажет следующее узкое место.'],
+  ] as const
+
+  return (
+    <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
+      <div className="mb-3 flex items-start gap-2">
+        <Target className="mt-0.5 h-4.5 w-4.5 shrink-0" style={{ color: INDIGO }} />
+        <div>
+          <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
+            Как работает теория ограничений
+          </h2>
+          <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+            Подход Голдратта не оптимизирует всё подряд. Он ищет одно главное ограничение системы и строит вокруг него порядок действий.
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-2 lg:grid-cols-5">
+        {steps.map(([label, value]) => (
+          <div key={label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>{label}</p>
+            <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>{value}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
+  const [activeTab, setActiveTab] = useState<'flow' | 'trend' | 'team' | 'loss'>('flow')
+  if (!facts) return null
+
+  const fileName = facts.sourceMetadata['Источник'] ?? facts.sourceMetadata.Source ?? 'Источник не записан'
+  const sheetName = facts.sourceMetadata['Лист'] ?? facts.sourceMetadata.Sheet ?? 'Не указан'
+  const qualityScore = facts.sourceMetadata['Quality score'] ?? '—'
+  const period = facts.sourceMetadata['Период'] ?? 'Не указан'
+  const tabClass = (active: boolean) =>
+    `rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${active ? '' : 'hover:bg-slate-50'}`
+
+  return (
+    <section className="mt-4 overflow-hidden rounded-3xl border" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
+      <div className="border-b px-4 py-3 sm:px-5" style={{ borderColor: BORDER_SOFT }}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-3xl">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
+              Проверка исходных данных
+            </p>
+            <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>
+              Данные, использованные для анализа
+            </h2>
+            <p className="mt-1 text-sm leading-snug" style={{ color: TEXT2 }}>
+              Это исходные операционные таблицы, на которых построен Goldratt-разбор: карта потока, динамика по месяцам, загрузка команды и экономика потерь.
+            </p>
+          </div>
+          <StatusPill tone="blue">Оценка качества: {qualityScore}</StatusPill>
+        </div>
+      </div>
+
+      <div className="space-y-3 px-4 py-3.5 sm:px-5">
+        <div className="grid gap-2 text-xs sm:grid-cols-4">
+          {[
+            ['Файл', fileName],
+            ['Лист', sheetName],
+            ['Период', period],
+            ['Таблицы', '4 блока'],
+          ].map(([label, value]) => (
+            <div key={label} className="min-w-0 overflow-hidden rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+              <p className="font-semibold" style={{ color: TEXT3 }}>{label}</p>
+              <p className="mt-1 max-w-full truncate font-medium" style={{ color: TEXT }} title={value}>{value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {[
+            ['flow', 'Поток по этапам'],
+            ['trend', 'Динамика по месяцам'],
+            ['team', 'Загрузка команды'],
+            ['loss', 'Экономика потерь'],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id as 'flow' | 'trend' | 'team' | 'loss')}
+              className={tabClass(activeTab === id)}
+              style={{
+                borderColor: activeTab === id ? '#BFDBFE' : BORDER,
+                background: activeTab === id ? '#EFF6FF' : '#FFFFFF',
+                color: activeTab === id ? PRIMARY_BLUE : TEXT2,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'flow' && (
+          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
+            <table className="min-w-[920px] w-full border-collapse text-xs">
+              <thead style={{ background: '#F8FAFC' }}>
+                <tr>
+                  {['Этап', 'Вход/мес', 'Выход/мес', 'Конверсия', 'Ожидание', 'Норма', 'Загрузка', 'Очередь'].map((head) => (
+                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {facts.processRows.map((row) => (
+                  <tr key={row.label}>
+                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.label}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.input}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.output}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.conversion}%</td>
+                    <td className="border-b px-3 py-2 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.wait}</td>
+                    <td className="border-b px-3 py-2 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>{row.norm}</td>
+                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: row.load > 110 ? '#B91C1C' : TEXT }}>{row.load}%</td>
+                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: row.queue > 50 ? '#B91C1C' : TEXT }}>{row.queue}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'trend' && (
+          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
+            <table className="min-w-[920px] w-full border-collapse text-xs">
+              <thead style={{ background: '#F8FAFC' }}>
+                <tr>
+                  {['Месяц', 'Лиды', 'Обработано за 2 ч', 'Диагностики', 'Оплаты', 'Выручка', 'Потерянные лиды', 'Среднее время реакции'].map((head) => (
+                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {facts.trendRows.map((row) => (
+                  <tr key={row.month}>
+                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.month}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.leads}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.processed}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.diagnostics}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.payments}</td>
+                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{formatCurrency(row.revenue, true)}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.lostLeads}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.reaction} ч</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'team' && (
+          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
+            <table className="min-w-[820px] w-full border-collapse text-xs">
+              <thead style={{ background: '#F8FAFC' }}>
+                <tr>
+                  {['Роль', 'Людей', 'Норма задач/мес', 'Факт задач/мес', 'Загрузка', 'Риск'].map((head) => (
+                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {facts.teamRows.map((row) => (
+                  <tr key={row.role}>
+                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.role}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.people}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.normTasks}</td>
+                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.actualTasks}</td>
+                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: row.load >= 120 ? '#B91C1C' : row.load >= 100 ? '#B45309' : '#047857' }}>{row.load}%</td>
+                    <td className="border-b px-3 py-2" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.risk}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'loss' && (
+          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
+            <table className="min-w-[840px] w-full border-collapse text-xs">
+              <thead style={{ background: '#F8FAFC' }}>
+                <tr>
+                  {['Причина потерь', 'Объём', 'Потенциальная выручка', 'Комментарий'].map((head) => (
+                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {facts.lossRows.map((row) => (
+                  <tr key={row.reason}>
+                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.reason}</td>
+                    <td className="border-b px-3 py-2 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.volume}</td>
+                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{formatCurrency(row.revenue, true)}</td>
+                    <td className="border-b px-3 py-2" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.comment}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function GoldrattDashboard({
+  cards,
+  facts,
+  accent,
+  onOpen,
+}: {
+  cards: DetailCard[]
+  facts: GoldrattFacts
+  accent: string
+  onOpen: (id: string) => void
+}) {
+  const openFromKeyboard = (event: ReactKeyboardEvent<HTMLElement>, id: string) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onOpen(id)
+    }
+  }
+
+  const byId = (id: string) => cards.find((card) => card.id === id) ?? null
+  const pairedIds = ['constraint', 'flow', 'evidence', 'donot'] as const
+  const fullWidthIds = ['exploit', 'actions'] as const
+
+  return (
+    <div className="space-y-4">
+      {pairedIds.map((id) => {
+        const card = byId(id)
+        if (!card) return null
+        return (
+          <div key={card.id} className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+            <article
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpen(card.id)}
+              onKeyDown={(event) => openFromKeyboard(event, card.id)}
+              className="flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
+              style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
+            >
+              <div className="mb-2.5 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <IconBadge icon={card.icon} tone={card.tone} />
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
+                    <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
+                  </div>
+                </div>
+                <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
+              </div>
+              <div className="flex-1">
+                <div className="mb-2">
+                  <p className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`} style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}>
+                    {card.value}
+                  </p>
+                  {card.support && <p className="mt-1 text-sm leading-snug" style={{ color: '#334155' }}>{card.support}</p>}
+                </div>
+                <CardPreview card={card} agentType="goldratt" pnlFacts={null} goldrattFacts={facts} accent={accent} />
+              </div>
+              <div className="mt-2 flex items-center justify-end gap-3 pt-1.5">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onOpen(card.id)
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold"
+                  style={{ color: accent }}
+                >
+                  Что это значит
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </article>
+            <GoldrattActionCard card={card} />
+          </div>
+        )
+      })}
+
+      {fullWidthIds.map((id) => {
+        const card = byId(id)
+        if (!card) return null
+        return (
+          <article
+            key={card.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpen(card.id)}
+            onKeyDown={(event) => openFromKeyboard(event, card.id)}
+            className="flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
+            style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
+          >
+            <div className="mb-2.5 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <IconBadge icon={card.icon} tone={card.tone} />
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
+                  <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
+                </div>
+              </div>
+              <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
+            </div>
+            <div className="flex-1">
+              <div className="mb-2">
+                <p className="text-[1.1rem] font-semibold tracking-tight" style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}>
+                  {card.value}
+                </p>
+                {card.support && <p className="mt-1 text-sm leading-snug" style={{ color: '#334155' }}>{card.support}</p>}
+              </div>
+              <CardPreview card={card} agentType="goldratt" pnlFacts={null} goldrattFacts={facts} accent={accent} />
+            </div>
+            <div className="mt-2 flex items-center justify-end gap-3 pt-1.5">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onOpen(card.id)
+                }}
+                className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold"
+                style={{ color: accent }}
+              >
+                Что это значит
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </article>
+        )
+      })}
+    </div>
   )
 }
 
@@ -2912,15 +3711,15 @@ function DetailDrawer({
   const isPnl = agentType === 'pnl'
   return (
     <ModalShell open={open} title={card.detailTitle} onClose={onClose}>
-        <div className="space-y-4">
-          <div className="flex items-start gap-3">
-            <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border"
-              style={{ borderColor: BORDER, background: '#F8FAFC', color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
-            >
-              <card.icon className="h-4 w-4" />
-            </div>
-            <div>
+      <div className="space-y-4">
+        <div className="flex items-start gap-3">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border"
+            style={{ borderColor: BORDER, background: '#F8FAFC', color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
+          >
+            <card.icon className="h-4 w-4" />
+          </div>
+          <div>
             <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
             <p className="mt-2.5 text-lg font-semibold leading-snug" style={{ color: TEXT }}>{card.detailLead}</p>
             {!isPnl && card.note && (
@@ -2929,28 +3728,19 @@ function DetailDrawer({
           </div>
         </div>
 
-        {!isPnl && <DetailVisual card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />}
+        {isPnl && <DetailVisual card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />}
 
-        {bullets.length > 0 && (isPnl || (card.id !== 'actions' && card.id !== 'limitations')) && (
+        {bullets.length > 0 && (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: CARD }}>
             <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>Что это значит</h3>
             <div className="space-y-2 text-sm leading-relaxed" style={{ color: '#334155' }}>
               {bullets.map((bullet) => (
-              <div key={bullet} className="flex gap-2">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: TONES[card.tone].fill }} />
-                <span>{bullet}</span>
-              </div>
+                <div key={bullet} className="flex gap-2">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: TONES[card.tone].fill }} />
+                  <span>{bullet}</span>
+                </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {!isPnl && (
-          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-            <h3 className="mb-2 text-sm font-semibold" style={{ color: TEXT }}>Что делать</h3>
-            <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>
-              {card.actionText ?? card.support ?? card.value}
-            </p>
           </div>
         )}
       </div>
@@ -3282,9 +4072,9 @@ export default function ReportDisplay({
   const source = useMemo(() => parseSourceText(data.sourceText), [data.sourceText])
   const sections = useMemo(() => splitIntoSections(data.report), [data.report])
   const pnlFacts = useMemo(() => (data.agentType === 'pnl' ? buildPnlFacts(data.report, source, sections) : null), [data.agentType, data.report, sections, source])
-  const goldrattFacts = useMemo(() => (data.agentType === 'goldratt' ? buildGoldrattFacts(data.report, sections) : null), [data.agentType, data.report, sections])
+  const goldrattFacts = useMemo(() => (data.agentType === 'goldratt' ? buildGoldrattFacts(data.report, sections, data.sourceText) : null), [data.agentType, data.report, sections, data.sourceText])
   const cards = useMemo(
-    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlDashboardCardsV2(pnlFacts) : buildGoldrattDashboardCards(goldrattFacts!)),
+    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlDashboardCardsV2(pnlFacts) : goldrattFacts ? buildGoldrattDashboardCards(goldrattFacts) : []),
     [data.agentType, goldrattFacts, pnlFacts],
   )
 
@@ -3333,28 +4123,40 @@ export default function ReportDisplay({
       />
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 print:px-0 print:py-4">
-        <IntroBlockV2 agentType={data.agentType} />
-
-        {data.agentType !== 'pnl' && (
-          <ChipNav
-            cards={cards}
-            onOpenCard={setOpenCardId}
-          />
+        {data.agentType === 'pnl' ? (
+          <>
+            <IntroBlockV2 agentType={data.agentType} />
+            <DashboardCards
+              cards={cards}
+              agentType={data.agentType}
+              pnlFacts={pnlFacts}
+              goldrattFacts={goldrattFacts}
+              accent={meta.accent}
+              onOpen={setOpenCardId}
+            />
+          </>
+        ) : (
+          <>
+            <GoldrattInfoBlock facts={goldrattFacts} />
+            <GoldrattMethodologyBlock />
+            {goldrattFacts && (
+              <GoldrattDashboard
+                cards={cards}
+                facts={goldrattFacts}
+                accent={meta.accent}
+                onOpen={setOpenCardId}
+              />
+            )}
+          </>
         )}
-
-        <DashboardCards
-          cards={cards}
-          agentType={data.agentType}
-          pnlFacts={pnlFacts}
-          goldrattFacts={goldrattFacts}
-          accent={meta.accent}
-          onOpen={setOpenCardId}
-        />
 
         {data.agentType === 'pnl' && source && (
           <div className="mt-4">
             <SourceTableBlockV2 source={source} expanded={sourceExpanded} onToggleExpanded={() => setSourceExpanded((value) => !value)} />
           </div>
+        )}
+        {data.agentType === 'goldratt' && goldrattFacts && (
+          <GoldrattSourceBlock facts={goldrattFacts} />
         )}
 
         {/* Полный текстовый отчёт — всегда внизу, кнопка рядом с контентом */}
