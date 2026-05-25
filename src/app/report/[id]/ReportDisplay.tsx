@@ -1232,7 +1232,7 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
   ]
 }
 
-function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null): DetailCard[] {
+function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
   const gap = facts.gapToBreakeven
   const negativeMonths = facts.totalMonths > 0 ? facts.totalMonths - facts.profitableMonths : null
   const top3Percent = facts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.pct ?? 0), 0)
@@ -1269,7 +1269,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
         'Такой бизнес нельзя оценивать только по обороту. Оборот показывает масштаб активности, но не качество модели. Если выручка не превращается в прибыль регулярно, компания фактически покупает занятость, нагрузку и операционную сложность, но не получает устойчивый экономический результат.',
       ],
       note: 'Этот блок фиксирует общий диагноз модели: бизнес не доказал повторяемую способность зарабатывать. Расшифровка причин лежит ниже — в расходной базе, динамике, пороге и ограничениях данных.',
-      actionText: 'Первое управленческое решение — разделить сеть на клубы-доноры, нейтральные клубы и клубы, которые съедают маржу. Сейчас нельзя лечить бизнес только продажами или общими сокращениями: сначала нужно понять, где именно возникает убыток.',
+      actionText: 'Первое решение — не “продать больше” и не “резать всё”, а построить карту сети. Нужно понять, вся сеть убыточна или 1–2 клуба тянут общий результат вниз. Для доноров задача — удержать маржу и масштабировать практики. Для нейтральных — довести до нормы. Для пожирателей маржи — отдельный разбор аренды, ФОТ, УК и загрузки.',
       featured: true,
     },
     {
@@ -1289,7 +1289,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
         'Особенно опасны месяцы с нормальной выручкой и отрицательной прибылью. Они показывают, что проблема не сводится к маркетингу или сезонности: она может сидеть в структуре расходов, распределении затрат между клубами или тяжёлой базе отдельных точек.',
       ],
       note: 'Динамика отвечает на вопрос времени: какие месяцы являются нормой, какие пиком, а какие провалом. Причины провалов нужно проверять отдельно.',
-      actionText: 'Нужно построить календарь управления по типам месяцев: для пиковых — правила удержания маржи, для обычных — контроль нормы расходов, для провальных — заранее подготовленный режим снижения операционной нагрузки.',
+      actionText: 'Нельзя управлять сетью по среднему месяцу. Пиковые месяцы должны показывать, какая маржа возможна при нормальной загрузке. Обычные месяцы — это проверка устойчивости модели. Провальные месяцы показывают, насколько быстро расходы адаптируются к падению выручки. Для каждого типа месяца нужен отдельный сценарий: удержание маржи, контроль базы или заранее подготовленное снижение нагрузки.',
     },
     {
       id: 'profit-drag',
@@ -1309,7 +1309,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
         'Настоящий вопрос не "какая статья самая большая", а "какая статья не соответствует выручке конкретного клуба". Один клуб может быть здоровым, второй — на грани, а третий — пожирать маржу всей сети. Сводный отчёт этого не показывает.',
       ],
       note: `База крупных статей: ${formatCurrency(fixedBase, true)}/мес. Это блок про управляемость расходной конструкции, а не про расчёт порога.`,
-      actionText: 'Пересобрать управление расходной базой по клубам: посчитать долю аренды, ФОТ и УК от выручки, сравнить с загрузкой и маржой, затем разделить точки на доноров, нейтральные и пожирателей маржи. По каждой группе нужны разные решения.',
+      actionText: 'Начинать нужно не с экономии на всём подряд, а с проверки трёх тяжёлых статей: УК, ФОТ и аренды. Если проблема сидит в условиях аренды или структуре ФОТ отдельных клубов, сокращение продуктов, сервиса или маркетинга ухудшит клиентский опыт и не исправит маржу. Управленческий фокус — найти клубы, где база расходов не соответствует выручке, и принимать разные решения по разным типам точек.',
       featured: true,
     },
     {
@@ -1331,7 +1331,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
         `Целевой ориентир ${targetRevenue !== null ? formatCurrency(targetRevenue, true) : 'выше порога'} имеет смысл только при условии, что расходы не растут пропорционально выручке. Нужно считать не выручку до цели, а прибыль после всех дополнительных затрат.`,
       ],
       note: targetRevenue !== null ? `Для маржи ${targetMargin}% нужен ориентир около ${formatCurrency(targetRevenue, true)}.` : undefined,
-      actionText: 'Разделить два сценария: выход в ноль и выход в нормальную маржу. Gap лучше закрывать не одной мерой, а комбинацией: часть через рост выручки, часть через снижение или фиксацию базы расходов.',
+      actionText: '9,5 млн ₽ — это не цель, а нижняя граница выживания. Если бизнес ориентируется только на выход в ноль, он остаётся без запаса прочности: любой слабый месяц, рост ФОТ или арендный скачок снова возвращает сеть в минус. Управленческая цель — не просто дотянуться до порога, а создать запас: снизить фиксированную базу и проверить, какая выручка реально даёт нормальную маржу.',
     },
     {
       id: 'actions',
@@ -1352,29 +1352,9 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
       note: facts.actions[0] ?? 'Первое действие должно дать максимум ясности, а не имитацию анализа.',
       actionText: 'За 7 дней собрать недостающие управленческие разрезы и подтвердить, какие рычаги вообще доступны. За 14 дней выбрать сценарий по каждой группе точек и статьям расходов. За 30 дней запустить план с владельцами, сроками и контрольными метриками: маржа, прибыль, доля крупных статей и эффект каждой меры.',
     },
-    {
-      id: 'limitations',
-      title: 'Ограничения анализа',
-      kicker: 'Где нужна детализация',
-      tone: 'slate',
-      icon: Info,
-      value: 'Нужна детализация',
-      support: 'Без P&L по клубам, трафика и расшифровки УК нельзя точно понять источник проблемы.',
-      statusLabel: 'Данные ограничены',
-      detailTitle: 'Ограничения анализа',
-      detailLead: 'Сводный P&L показывает, что проблема есть, но не показывает, где именно она сидит. Поэтому сейчас опасно принимать радикальные решения по всей сети одним движением.',
-      bullets: [
-        'Без P&L по клубам невозможно понять, сеть в целом убыточна или несколько точек уничтожают результат. Если вся сеть работает плохо, нужно менять модель управления расходами. Если часть клубов прибыльна, а часть тянет вниз, общие сокращения могут ударить по сильным точкам и не решить проблему слабых.',
-        'Без данных по трафику и посещаемости нельзя понять, проблема в спросе, цене, конверсии или загрузке. Один и тот же убыток может означать разные вещи: мало людей, неправильная цена, низкая конверсия, дорогая база или неэффективный график персонала.',
-        'Без расшифровки УК нельзя понять, это управляемая статья или обязательная нагрузка. Если внутри УК есть завышенные или не привязанные к выручке расходы, там может быть быстрый резерв. Если это обязательная нагрузка, решение должно быть в модели распределения расходов по клубам.',
-        'Без ФОТ по сменам нельзя понять, персонал раздут или обслуживает реальный поток. Резать ФОТ вслепую опасно: можно ухудшить сервис и потерять выручку, но если ФОТ не связан с загрузкой, это уже проблема графиков, смен и планирования.',
-      ],
-      note: sourceWarningsLabel(source),
-      actionText: 'Не принимать сейчас решения уровня "режем всё", "льём маркетинг" или "сокращаем персонал по всей сети". Сначала построить карту сети: доноры, точки на нуле, пожиратели маржи. Для каждой группы нужны разные решения.',
-    },
   ]
 
-  const order = ['diagnosis', 'profit-drag', 'trend-anomalies', 'breakeven', 'actions', 'limitations']
+  const order = ['diagnosis', 'profit-drag', 'trend-anomalies', 'breakeven', 'actions']
   return cards.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
 }
 
@@ -1828,8 +1808,8 @@ function InteractiveTrendChart({
   }
 
   const width = 760
-  const height = 320
-  const padding = { top: 20, right: 20, bottom: 38, left: 56 }
+  const height = 284
+  const padding = { top: 16, right: 18, bottom: 34, left: 52 }
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
   const values = [...revenue, ...profit]
@@ -1859,8 +1839,8 @@ function InteractiveTrendChart({
   const yTicks = Array.from({ length: 5 }, (_, index) => minValue + (range / 4) * index).reverse()
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+    <div className="space-y-1.5">
+      <div className="rounded-3xl border p-2.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full overflow-visible" role="img" aria-label="Динамика выручки и прибыли по месяцам">
           {yTicks.map((tick) => {
             const y = padding.top + plotHeight - ((tick - minValue) / range) * plotHeight
@@ -1972,13 +1952,13 @@ function ExpensePreview({ items }: { items: ExpenseItem[] }) {
         const pct = item.pct ?? 0
         return (
           <div key={item.label}>
-            <div className="mb-1 flex items-center justify-between gap-3 text-[11px]">
+            <div className="mb-0.5 flex items-center justify-between gap-3 text-[11px]">
               <span style={{ color: TEXT }}>{item.label}</span>
               <span className="font-semibold" style={{ color: tone.text }}>
                 {item.pct !== null ? `${item.pct}%` : formatCurrency(item.amount, true)}
               </span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
+            <div className="h-1.5 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
               <div className="h-full rounded-full" style={{ width: `${clamp(pct || 12)}%`, background: tone.fill }} />
             </div>
           </div>
@@ -2138,9 +2118,9 @@ function CardPreview({
 
 function MetricChip({ label, value, tone = 'slate' }: { label: string; value: string; tone?: Tone }) {
   return (
-    <div className="rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+    <div className="rounded-2xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
       <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{label}</p>
-      <p className="mt-1 text-sm font-semibold" style={{ color: tone === 'slate' ? TEXT : TONES[tone].text }}>{value}</p>
+      <p className="mt-0.5 text-sm font-semibold" style={{ color: tone === 'slate' ? TEXT : TONES[tone].text }}>{value}</p>
     </div>
   )
 }
@@ -2174,57 +2154,43 @@ function BulletPreview({ items }: { items: string[] }) {
 }
 
 function ScenarioPlanPanel({ facts }: { facts: PnlFacts }) {
-  const scenarios = [
-    {
-      title: 'Рост выручки',
-      effect: facts.scenarios[0] ?? 'Запускать только там, где есть подтверждённая загрузка и понятная маржа после роста.',
-      risk: 'Риск: оборот вырастет вместе с ФОТ, УК, продуктами и нагрузкой, а маржа останется слабой.',
-      horizon: '30 дней+',
-    },
-    {
-      title: 'Снижение базы',
-      effect: facts.scenarios[1] ?? 'Начинать с УК, аренды и ФОТ по клубам, а не с одинакового урезания всей сети.',
-      risk: 'Риск: грубое сокращение ударит по сервису и сильным клубам, но не решит проблему слабых точек.',
-      horizon: '14–30 дней',
-    },
-    {
-      title: 'Комбо-сценарий',
-      effect: facts.scenarios[2] ?? 'Самый рабочий путь: чуть поднять выручку в точках с потенциалом и снять базу там, где она не оправдана.',
-      risk: 'Риск: требует дисциплины и клубного разреза, но даёт лучший шанс выйти не только в ноль, а в нормальную маржу.',
-      horizon: '30 дней+',
-    },
-  ]
   const plan = [
-    { window: '7 дней', action: facts.actions[0] ?? 'Собрать P&L по клубам, расшифровку УК, аренду и ФОТ по каждой точке. Это не “анализ ради анализа”, а карта, где именно течёт маржа.' },
-    { window: '14 дней', action: facts.actions[1] ?? 'Разделить клубы на доноров, нейтральные точки и пожирателей маржи. Для каждой группы определить отдельные решения, а не общий режим сокращений.' },
-    { window: '30 дней', action: facts.actions[2] ?? 'Закрепить регулярный dashboard по клубам и сезонный сценарий: где масштабировать спрос, где пересобирать базу, где готовить переговоры или жёсткий форматный сценарий.' },
+    { window: '7 дней', action: facts.actions[0] ?? 'Собрать P&L по каждому клубу: выручка, аренда, ФОТ, УК, продукты, прибыль.' },
+    { window: '14 дней', action: facts.actions[1] ?? 'Разделить клубы на три группы: доноры, нейтральные, пожиратели маржи.' },
+    { window: '30 дней', action: facts.actions[2] ?? 'Принять разные решения по группам: масштабировать сильные, довести нейтральные, разобрать или пересобрать слабые.' },
+  ]
+  const dangerous = [
+    'Не резать расходы вслепую',
+    'Не масштабировать продажи без маржи',
+    'Не оценивать сеть только по среднему месяцу',
+    'Не принимать решения без P&L по клубам',
   ]
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>Сценарии</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {scenarios.map((scenario) => (
-            <div key={scenario.title} className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-              <p className="text-sm font-semibold" style={{ color: TEXT }}>{scenario.title}</p>
-              <p className="mt-2 text-sm leading-relaxed" style={{ color: '#334155' }}>{scenario.effect}</p>
-              <p className="mt-2 text-xs leading-relaxed" style={{ color: TEXT2 }}>{scenario.risk}</p>
-              <p className="mt-2 text-[11px] font-semibold" style={{ color: INDIGO }}>Срок: {scenario.horizon}</p>
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)]">
+      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>План 7 / 14 / 30</h3>
+        <div className="space-y-2.5">
+          {plan.map((step) => (
+            <div key={step.window} className="grid gap-2 rounded-2xl border p-3 sm:grid-cols-[72px_1fr]" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
+              <span className="inline-flex h-7 w-fit items-center justify-center rounded-full px-2.5 text-[11px] font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>
+                {step.window}
+              </span>
+              <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>{step.action}</p>
             </div>
           ))}
         </div>
       </div>
-
-      <div>
-        <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>План 7 / 14 / 30</h3>
-        <div className="space-y-2">
-          {plan.map((step) => (
-            <div key={step.window} className="flex gap-3 rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FFFFFF' }}>
-              <span className="inline-flex h-7 min-w-16 items-center justify-center rounded-full px-2 text-[11px] font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>
-                {step.window}
-              </span>
-              <p className="text-sm leading-snug" style={{ color: '#334155' }}>{step.action}</p>
+      <div className="rounded-3xl border p-4" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+        <h3 className="text-sm font-semibold" style={{ color: '#92400E' }}>Какие решения сейчас опасны</h3>
+        <p className="mt-2 text-sm leading-relaxed" style={{ color: '#78350F' }}>
+          Опасно принимать одно решение для всей сети: “режем всё”, “льём маркетинг”, “сокращаем персонал” или “закрываем направления”. Сводный P&L показывает убыток, но не показывает, где именно он возникает. Без клубного разреза можно ударить по сильным точкам и не исправить слабые.
+        </p>
+        <div className="mt-3 grid gap-2">
+          {dangerous.map((item) => (
+            <div key={item} className="flex gap-2 text-sm leading-snug" style={{ color: '#78350F' }}>
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#F59E0B' }} />
+              <span>{item}</span>
             </div>
           ))}
         </div>
@@ -2402,7 +2368,7 @@ function GoldrattLimitationsPanel({ facts }: { facts: GoldrattFacts }) {
   )
 }
 
-function pnlActionContent(card: DetailCard): { title: string; main: string; text: string; icon: LucideIcon; tone: Tone } | null {
+function pnlActionContent(card: DetailCard): { title: string; main: string; text: string; icon: LucideIcon; tone: Tone; tags?: string[] } | null {
   switch (card.id) {
     case 'diagnosis':
       return {
@@ -2411,14 +2377,16 @@ function pnlActionContent(card: DetailCard): { title: string; main: string; text
         text: card.actionText ?? 'Сейчас нельзя лечить бизнес только продажами или общими сокращениями. Сначала нужно понять, где именно возникает убыток.',
         icon: Target,
         tone: 'red',
+        tags: ['Доноры', 'Нейтральные', 'Пожиратели маржи'],
       }
     case 'profit-drag':
       return {
         title: 'Что делать с расходной базой',
         main: 'Разбирать УК, ФОТ и аренду по каждому клубу, а не резать всё подряд',
-        text: 'Главный риск — начать экономить на мелких или видимых статьях и не тронуть настоящую причину. Если проблема сидит в аренде, УК или структуре ФОТ конкретных клубов, экономия на продуктах или сервисе может ухудшить клиентский опыт и не исправить маржу. Первое действие: собрать расходы по клубам и найти, где база не соответствует выручке.',
+        text: card.actionText ?? 'Главный риск — начать экономить на мелких или видимых статьях и не тронуть настоящую причину. Если проблема сидит в аренде, УК или структуре ФОТ конкретных клубов, экономия на продуктах или сервисе может ухудшить клиентский опыт и не исправить маржу. Первое действие: собрать расходы по клубам и найти, где база не соответствует выручке.',
         icon: Building2,
         tone: 'amber',
+        tags: ['УК', 'ФОТ', 'Аренда', 'По клубам'],
       }
     case 'trend-anomalies':
       return {
@@ -2427,22 +2395,16 @@ function pnlActionContent(card: DetailCard): { title: string; main: string; text
         text: card.actionText ?? 'Нельзя управлять сетью по среднему месяцу. Для пиковых месяцев нужны правила удержания маржи, для обычных — контроль базы расходов, для провальных — заранее подготовленный сценарий снижения операционной нагрузки.',
         icon: Calendar,
         tone: 'blue',
+        tags: ['Пик', 'Норма', 'Провал'],
       }
     case 'breakeven':
       return {
         title: 'Что делать с порогом',
         main: 'Не ставить целью просто “выйти в ноль”',
-        text: '9,5 млн ₽ — это нижняя граница выживания, а не здоровая цель. Нужен запас прочности: либо снижать базу расходов, либо целиться выше порога, иначе каждый слабый месяц снова будет возвращать сеть в минус.',
+        text: card.actionText ?? '9,5 млн ₽ — это нижняя граница выживания, а не здоровая цель. Нужен запас прочности: либо снижать базу расходов, либо целиться выше порога, иначе каждый слабый месяц снова будет возвращать сеть в минус.',
         icon: Gauge,
         tone: 'red',
-      }
-    case 'limitations':
-      return {
-        title: 'Какие решения сейчас опасны',
-        main: 'Не принимать радикальные решения по всей сети одним движением',
-        text: card.actionText ?? 'Нельзя решать “резать всё”, “лить маркетинг” или “закрывать слабые направления” только по сводному P&L. Без детализации можно ударить по сильным клубам и не решить проблему слабых.',
-        icon: AlertTriangle,
-        tone: 'amber',
+        tags: ['Не ноль', 'Запас', 'Маржа'],
       }
     default:
       return null
@@ -2464,6 +2426,15 @@ function PnlActionCard({ card }: { card: DetailCard }) {
       </div>
       <p className="text-lg font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
       <p className="mt-3 text-sm leading-relaxed" style={{ color: '#334155' }}>{action.text}</p>
+      {action.tags && action.tags.length > 0 && (
+        <div className="mt-auto flex flex-wrap gap-2 pt-4">
+          {action.tags.map((tag) => (
+            <span key={tag} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}>
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
     </aside>
   )
 }
@@ -2499,12 +2470,12 @@ function DashboardCards({
           tabIndex={0}
           onClick={() => onOpen(card.id)}
           onKeyDown={(event) => openFromKeyboard(event, card.id)}
-          className={`flex flex-col rounded-3xl border p-4 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          className={`flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
             agentType === 'pnl' && card.id === 'actions' ? 'xl:col-span-2' : card.featured && agentType !== 'pnl' ? 'md:col-span-2 xl:col-span-2' : ''
           }`}
           style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
         >
-          <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="mb-2.5 flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <IconBadge icon={card.icon} tone={card.tone} />
               <div>
@@ -2515,8 +2486,8 @@ function DashboardCards({
             {agentType !== 'pnl' && <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>}
           </div>
 
-          <div className={`flex-1 ${card.featured ? 'min-h-[126px]' : 'min-h-[104px]'}`}>
-            <div className="mb-3">
+          <div className={`flex-1 ${card.featured ? 'min-h-[104px]' : 'min-h-[88px]'}`}>
+            <div className="mb-2.5">
               <p
                 className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`}
                 style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
@@ -2532,7 +2503,7 @@ function DashboardCards({
             <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
           </div>
 
-          <div className="mt-auto flex items-center justify-between gap-3 pt-3">
+          <div className="mt-auto flex items-center justify-between gap-3 pt-2.5">
             {agentType === 'pnl'
               ? <span />
               : (
@@ -3216,8 +3187,8 @@ export default function ReportDisplay({
   const pnlFacts = useMemo(() => (data.agentType === 'pnl' ? buildPnlFacts(data.report, source, sections) : null), [data.agentType, data.report, sections, source])
   const goldrattFacts = useMemo(() => (data.agentType === 'goldratt' ? buildGoldrattFacts(data.report, sections) : null), [data.agentType, data.report, sections])
   const cards = useMemo(
-    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlDashboardCardsV2(pnlFacts, source) : buildGoldrattDashboardCards(goldrattFacts!)),
-    [data.agentType, goldrattFacts, pnlFacts, source],
+    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlDashboardCardsV2(pnlFacts) : buildGoldrattDashboardCards(goldrattFacts!)),
+    [data.agentType, goldrattFacts, pnlFacts],
   )
 
   const [copiedReport, setCopiedReport] = useState(false)
