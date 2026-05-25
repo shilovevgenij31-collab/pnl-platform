@@ -911,7 +911,7 @@ function buildGoldrattFacts(report: string, sections: ReportSection[], sourceTex
     'Убрать ручную рутину с менеджеров входящих',
   ]
   const fallbackActionPlan30 = [
-    'Добавить координатора входящих заявок или автоматический pre-screening',
+    'Добавить координатора входящих заявок или автоматический первичный отбор',
     'Перераспределить роли и разделить входящий поток по каналам',
     'Проверить рост диагностик и оплат — это главная метрика изменения',
     'Оценить, не стало ли внедрение следующим ограничением после снятия первого',
@@ -946,7 +946,7 @@ function buildGoldrattFacts(report: string, sections: ReportSection[], sourceTex
       .sort((a, b) => b.load - a.load)[0]?.role ?? null
   const managerLoad = teamRows.find((row) => /входящ/i.test(row.role))?.load ?? mainStage?.load ?? 0
   const lateContactLoss = lossRows.find((row) => /2 ч|контакт/i.test(row.reason))?.revenue ?? 0
-  const leadVolume = trendData.at(-1)?.leads ?? mainStage?.input ?? 0
+  const leadVolume = mainStage?.input ?? trendData.at(-1)?.leads ?? 0
   const processedVolume = mainStage?.output ?? trendData.at(-1)?.processed ?? 0
   const stuckLeads = mainStage ? Math.max(mainStage.input - mainStage.output, mainStage.queue) : 0
   const reactionTime = trendData.at(-1)?.reaction ?? parseNumber(mainStage?.wait ?? '') ?? 0
@@ -1405,7 +1405,7 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
         'Убрать ручную рутину с менеджеров входящих: автоматизировать статусы.',
         'Ввести ежедневный контроль «лид без статуса».',
       ],
-      note: 'После очистки: добавить координатора входящих, автоматический pre-screening.',
+      note: 'После очистки: добавить координатора входящих и автоматический первичный отбор.',
       actionText: facts.exploitActions[0] ?? 'Первые 7 дней — только замеры и SLA. Ни найма, ни новых инструментов до подтверждения ограничения.',
     },
     {
@@ -2111,6 +2111,14 @@ function InteractiveTrendChart({
             stroke-dashoffset: 0;
           }
         }
+        @keyframes softPulse {
+          0%, 100% {
+            box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.08), 0 0 16px rgba(239, 68, 68, 0.08);
+          }
+          50% {
+            box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12), 0 0 24px rgba(239, 68, 68, 0.18);
+          }
+        }
       `}</style>
     </div>
   )
@@ -2276,11 +2284,11 @@ function CardPreview({
       case 'constraint':
         return (
           <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
-            <MetricChip label="Лидов / мес" value={`${goldrattFacts.leadVolume}`} tone="slate" />
+            <MetricChip label="Поток / мес" value={`${goldrattFacts.leadVolume}`} tone="slate" />
             <MetricChip label="Обработано" value={`${goldrattFacts.processedVolume}`} tone="blue" />
             <MetricChip label="Застревает" value={`${goldrattFacts.stuckLeads}`} tone="red" />
             <MetricChip label="Реакция" value={`${goldrattFacts.reactionTime} ч`} tone="amber" />
-            <MetricChip label="Загрузка" value={`${goldrattFacts.managerLoad}%`} tone="red" />
+            <MetricChip label="Этап / команда" value={`${goldrattFacts.processRows.find((row) => row.isBottleneck)?.load ?? goldrattFacts.managerLoad}% / ${goldrattFacts.managerLoad}%`} tone="red" />
             <MetricChip label="Потери" value={formatCurrency(goldrattFacts.lateContactLoss, true)} tone="amber" />
           </div>
         )
@@ -2473,81 +2481,148 @@ function FlowPipelineChart({ stages }: { stages: Array<{ label: string; isBottle
 }
 
 function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
+  const [activeIndex, setActiveIndex] = useState(() => {
+    const bottleneckIndex = stages.findIndex((stage) => stage.isBottleneck)
+    return bottleneckIndex >= 0 ? bottleneckIndex : 0
+  })
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => setReducedMotion(media.matches)
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [])
+
   if (stages.length === 0) return null
+  const activeStage = stages[activeIndex] ?? stages[0]
+
   return (
-    <div className="overflow-x-auto">
-      <div className="flex min-w-[520px] flex-col gap-2 py-1">
-        {/* Pipeline row */}
-        <div className="flex items-center gap-1">
-          {stages.map((stage, index) => (
-            <div key={stage.label} className="flex items-center gap-1 flex-1">
-              <div
-                className="flex flex-1 flex-col items-center gap-0.5 rounded-2xl border px-1.5 py-2 text-center"
-                style={{
-                  background: stage.isBottleneck ? '#FEF2F2' : '#F8FAFC',
-                  borderColor: stage.isBottleneck ? '#FECACA' : BORDER_SOFT,
-                  minWidth: '60px',
-                }}
-              >
-                {stage.isBottleneck && (
-                  <span className="mb-0.5 text-[7.5px] font-bold uppercase tracking-wide" style={{ color: '#DC2626' }}>⚠ Узкое</span>
-                )}
-                <span className="text-[10px] font-semibold leading-tight" style={{ color: stage.isBottleneck ? '#B91C1C' : TEXT }}>
-                  {stage.label}
-                </span>
-                <span className="mt-0.5 text-[8.5px] font-medium" style={{ color: stage.isBottleneck ? '#B91C1C' : TEXT3 }}>
-                  {stage.conversion}%
-                </span>
-              </div>
-              {index < stages.length - 1 && (
-                <span className="shrink-0 text-[10px]" style={{ color: TEXT3 }}>→</span>
-              )}
+    <div className="space-y-3">
+      <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: activeStage?.isBottleneck ? '#FECACA' : BORDER_SOFT, background: activeStage?.isBottleneck ? '#FFF7F7' : '#F8FAFC' }}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: activeStage?.isBottleneck ? '#DC2626' : TEXT3 }}>
+              {activeStage?.isBottleneck ? 'Ограничение потока' : 'Активный этап'}
+            </p>
+            <p className="mt-1 text-sm font-semibold" style={{ color: TEXT }}>{activeStage?.label}</p>
+            <p className="mt-1 text-xs leading-relaxed" style={{ color: TEXT2 }}>
+              {activeStage?.isBottleneck
+                ? 'Здесь система физически сужается: очередь растёт быстрее, чем команда успевает её пропускать дальше по потоку.'
+                : 'Наведите на этап в схеме или строку в таблице ниже, чтобы увидеть, как он влияет на throughput всей системы.'}
+            </p>
+          </div>
+          <div className="grid gap-2 text-xs sm:grid-cols-3">
+            <div className="rounded-xl border px-2.5 py-2" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
+              <p style={{ color: TEXT3 }}>Ожидание / норма</p>
+              <p className="mt-1 font-semibold" style={{ color: TEXT }}>{activeStage?.wait} / {activeStage?.norm}</p>
             </div>
-          ))}
+            <div className="rounded-xl border px-2.5 py-2" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
+              <p style={{ color: TEXT3 }}>Загрузка</p>
+              <p className="mt-1 font-semibold" style={{ color: activeStage && activeStage.load > 100 ? '#B91C1C' : TEXT }}>{activeStage?.load}%</p>
+            </div>
+            <div className="rounded-xl border px-2.5 py-2" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
+              <p style={{ color: TEXT3 }}>Очередь</p>
+              <p className="mt-1 font-semibold" style={{ color: activeStage && activeStage.queue > 10 ? '#B45309' : TEXT }}>{activeStage?.queue}</p>
+            </div>
+          </div>
         </div>
-        {/* Metrics table */}
-        <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER_SOFT }}>
-          <table className="w-full min-w-[520px] border-collapse text-[10px]">
-            <thead>
-              <tr style={{ background: '#F8FAFC' }}>
-                <td className="border-b border-r px-2 py-1.5 font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Этап</td>
-                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Вход</td>
-                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Выход</td>
-                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Ожидание</td>
-                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Норма</td>
-                <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Загрузка</td>
-                <td className="border-b px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Очередь</td>
-              </tr>
-            </thead>
-            <tbody>
-              {stages.map((stage) => (
-                <tr
-                  key={stage.label}
-                  style={{ background: stage.isBottleneck ? '#FEF2F2' : undefined }}
-                >
-                  <td className="border-b border-r px-2 py-1.5 font-semibold" style={{ borderColor: BORDER_SOFT, color: stage.isBottleneck ? '#B91C1C' : TEXT }}>
-                    {stage.label}{stage.isBottleneck ? ' ←' : ''}
-                  </td>
-                  <td className="border-b border-r px-2 py-1.5 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{stage.input}</td>
-                  <td className="border-b border-r px-2 py-1.5 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{stage.output}</td>
-                  <td className="border-b border-r px-2 py-1.5 text-right" style={{ borderColor: BORDER_SOFT, color: stage.isBottleneck ? '#B91C1C' : TEXT2 }}>{stage.wait}</td>
-                  <td className="border-b border-r px-2 py-1.5 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>{stage.norm}</td>
-                  <td
-                    className="border-b border-r px-2 py-1.5 text-right font-semibold tabular-nums"
-                    style={{ borderColor: BORDER_SOFT, color: stage.load > 110 ? '#B91C1C' : stage.load > 95 ? '#B45309' : '#047857' }}
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="flex min-w-[620px] flex-col gap-2 py-1">
+          <div className="flex items-center gap-1">
+            {stages.map((stage, index) => {
+              const isActive = index === activeIndex
+              return (
+                <div key={stage.label} className="flex flex-1 items-center gap-1">
+                  <button
+                    type="button"
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onFocus={() => setActiveIndex(index)}
+                    className="flex flex-1 flex-col items-center gap-0.5 rounded-2xl border px-1.5 py-2 text-center transition-all"
+                    style={{
+                      background: stage.isBottleneck ? (isActive ? '#FEE2E2' : '#FEF2F2') : isActive ? '#EEF6FF' : '#F8FAFC',
+                      borderColor: stage.isBottleneck ? '#FCA5A5' : isActive ? '#BFDBFE' : BORDER_SOFT,
+                      minWidth: '72px',
+                      boxShadow: stage.isBottleneck && !reducedMotion ? '0 0 0 1px rgba(239,68,68,0.08), 0 0 24px rgba(239,68,68,0.12)' : undefined,
+                      animation: !reducedMotion && stage.isBottleneck ? 'softPulse 2.6s ease-in-out infinite' : undefined,
+                    }}
+                    aria-label={`Этап ${stage.label}: вход ${stage.input}, выход ${stage.output}, ожидание ${stage.wait}, загрузка ${stage.load}%`}
                   >
-                    {stage.load}%
-                  </td>
-                  <td
-                    className="border-b px-2 py-1.5 text-right font-semibold tabular-nums"
-                    style={{ borderColor: BORDER_SOFT, color: stage.queue > 50 ? '#B91C1C' : stage.queue > 10 ? '#B45309' : TEXT2 }}
-                  >
-                    {stage.queue}
-                  </td>
+                    {stage.isBottleneck && (
+                      <span className="mb-0.5 inline-flex items-center gap-1 text-[7.5px] font-bold uppercase tracking-wide" style={{ color: '#DC2626' }}>
+                        <AlertTriangle className="h-2.5 w-2.5" />
+                        Ограничение
+                      </span>
+                    )}
+                    <span className="text-[10px] font-semibold leading-tight" style={{ color: stage.isBottleneck ? '#B91C1C' : isActive ? PRIMARY_BLUE : TEXT }}>
+                      {stage.label}
+                    </span>
+                    <span className="mt-0.5 text-[8.5px] font-medium" style={{ color: stage.isBottleneck ? '#B91C1C' : TEXT3 }}>
+                      {stage.conversion}%
+                    </span>
+                  </button>
+                  {index < stages.length - 1 && (
+                    <span className="shrink-0 text-[10px]" style={{ color: TEXT3 }}>→</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER_SOFT }}>
+            <table className="w-full min-w-[620px] border-collapse text-[10px]">
+              <thead>
+                <tr style={{ background: '#F8FAFC' }}>
+                  <td className="sticky left-0 z-10 border-b border-r px-2 py-1.5 font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3, background: '#F8FAFC' }}>Этап</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Вход</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Выход</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Конверсия</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Ожидание</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Норма</td>
+                  <td className="border-b border-r px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Загрузка</td>
+                  <td className="border-b px-2 py-1.5 text-right font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>Очередь</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {stages.map((stage, index) => {
+                  const isActive = index === activeIndex
+                  const rowBackground = stage.isBottleneck ? (isActive ? '#FEE2E2' : '#FEF2F2') : isActive ? '#F8FBFF' : CARD
+                  return (
+                    <tr
+                      key={stage.label}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      className="transition-colors hover:bg-slate-50"
+                      style={{ background: rowBackground }}
+                    >
+                      <td className="sticky left-0 z-10 border-b border-r px-2 py-1.5 font-semibold" style={{ borderColor: BORDER_SOFT, color: stage.isBottleneck ? '#B91C1C' : TEXT, background: rowBackground }}>
+                        {stage.label}{stage.isBottleneck ? ' ←' : ''}
+                      </td>
+                      <td className="border-b border-r px-2 py-1.5 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{stage.input}</td>
+                      <td className="border-b border-r px-2 py-1.5 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{stage.output}</td>
+                      <td className="border-b border-r px-2 py-1.5 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{stage.conversion}%</td>
+                      <td className="border-b border-r px-2 py-1.5 text-right" style={{ borderColor: BORDER_SOFT, color: stage.isBottleneck ? '#B91C1C' : TEXT2 }}>{stage.wait}</td>
+                      <td className="border-b border-r px-2 py-1.5 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>{stage.norm}</td>
+                      <td
+                        className="border-b border-r px-2 py-1.5 text-right font-semibold tabular-nums"
+                        style={{ borderColor: BORDER_SOFT, color: stage.load > 110 ? '#B91C1C' : stage.load > 95 ? '#B45309' : '#047857' }}
+                      >
+                        {stage.load}%
+                      </td>
+                      <td
+                        className="border-b px-2 py-1.5 text-right font-semibold tabular-nums"
+                        style={{ borderColor: BORDER_SOFT, color: stage.queue > 50 ? '#B91C1C' : stage.queue > 10 ? '#B45309' : TEXT2 }}
+                      >
+                        {stage.queue}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -2570,9 +2645,9 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
     return <p className="text-sm leading-relaxed" style={{ color: TEXT2 }}>Недостаточно данных для графика.</p>
   }
 
-  const W = 700
-  const H = 220
-  const pad = { top: 14, right: 16, bottom: 30, left: 44 }
+  const W = 720
+  const H = 208
+  const pad = { top: 16, right: 18, bottom: 28, left: 44 }
   const plotW = W - pad.left - pad.right
   const plotH = H - pad.top - pad.bottom
   const n = data.length
@@ -2592,16 +2667,24 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
   const hIdx = activeIndex ?? (n - 1)
   const tip = {
     x: toX(hIdx),
+    y: toY(data[hIdx]?.processed ?? 0),
+    month: data[hIdx]?.month ?? '',
     leads: data[hIdx]?.leads ?? 0,
     processed: data[hIdx]?.processed ?? 0,
     payments: data[hIdx]?.payments ?? 0,
     reaction: data[hIdx]?.reaction ?? 0,
   }
+  const tooltipX = Math.min(Math.max(tip.x + 12, 12), W - 230)
+  const tooltipY = Math.max(Math.min(tip.y - 18, H - 100), 10)
+  const trendNote =
+    tip.leads > tip.processed
+      ? 'Лидов больше, а быстрая обработка не успевает за ростом входа.'
+      : 'Быстрая обработка не отстаёт от входящего потока.'
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="rounded-3xl border p-2" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Динамика лидов и оплат по месяцам">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Динамика лидов, быстрой обработки и оплат по месяцам">
           {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
             const v = Math.round(maxVal * ratio)
             const y = pad.top + plotH - ratio * plotH
@@ -2614,6 +2697,7 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
           })}
           <line x1={pad.left} x2={pad.left} y1={pad.top} y2={H - pad.bottom} stroke={BORDER} />
           <line x1={pad.left} x2={W - pad.right} y1={H - pad.bottom} y2={H - pad.bottom} stroke={BORDER} />
+          <line x1={tip.x} x2={tip.x} y1={pad.top} y2={H - pad.bottom} stroke="#CBD5E1" strokeDasharray="4 6" />
 
           <path d={linePath(leads)} fill="none" stroke="#3B82F6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
             style={!reducedMotion ? { strokeDasharray: DASH, strokeDashoffset: 0, animation: 'drawLine 900ms ease-out' } : undefined} />
@@ -2632,6 +2716,10 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
                 fill="transparent"
                 onMouseEnter={() => setActiveIndex(i)}
                 onMouseLeave={() => setActiveIndex(null)}
+                onFocus={() => setActiveIndex(i)}
+                rx="8"
+                tabIndex={0}
+                aria-label={`Месяц ${d.month}: лиды ${d.leads}, обработано за 2 часа ${d.processed}, оплаты ${d.payments}, реакция ${d.reaction} часов`}
               />
               <circle cx={toX(i)} cy={toY(d.leads)} r={i === hIdx ? 4.5 : 3} fill="#3B82F6" />
               <circle cx={toX(i)} cy={toY(d.processed)} r={i === hIdx ? 4.5 : 3} fill="#10B981" />
@@ -2640,16 +2728,17 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
             </g>
           ))}
 
-          <g transform={`translate(${Math.min(tip.x + 10, W - 220)}, ${pad.top + 4})`}>
-            <rect width="210" height="80" rx="12" fill="white" stroke={BORDER} />
-            <text x="10" y="20" fontSize="11" fontWeight="700" fill={TEXT}>{data[hIdx]?.month ?? ''}</text>
+          <g transform={`translate(${tooltipX}, ${tooltipY})`}>
+            <rect width="218" height="92" rx="12" fill="white" stroke={BORDER} />
+            <text x="10" y="20" fontSize="11" fontWeight="700" fill={TEXT}>{tip.month}</text>
             <text x="10" y="38" fontSize="11" fill="#3B82F6">{`Лиды: ${tip.leads}`}</text>
             <text x="10" y="53" fontSize="11" fill="#10B981">{`Обработано за 2 ч: ${tip.processed}`}</text>
             <text x="10" y="68" fontSize="11" fill="#F59E0B">{`Оплаты: ${tip.payments}   Реакция: ${tip.reaction} ч`}</text>
+            <text x="10" y="83" fontSize="10" fill={TEXT2}>{trendNote}</text>
           </g>
         </svg>
       </div>
-      <div className="flex flex-wrap gap-3 text-[10px]" style={{ color: TEXT3 }}>
+      <div className="flex flex-wrap gap-2.5 text-[10px]" style={{ color: TEXT3 }}>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-blue-500" />Лиды</span>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-emerald-500" />Обработано за 2 ч</span>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-amber-500" />Оплаты</span>
@@ -2665,41 +2754,50 @@ function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
       window: '7 дней',
       color: '#EEF2FF',
       textColor: '#4338CA',
+      goal: 'Подтвердить ограничение и сделать очередь видимой.',
       items: facts.actionPlan7.length > 0 ? facts.actionPlan7 : [
         'Замерить очередь перед узким этапом',
         'Ввести чек-лист входной заявки',
         'Убрать явно неподходящие входы из очереди',
       ],
+      success: 'Понятно, где и когда возникает очередь. Первичный контакт подтверждён или опровергнут как ограничение.',
     },
     {
       window: '14 дней',
       color: '#F0FDF4',
       textColor: '#166534',
+      goal: 'Использовать текущую мощность без найма и без нового хаоса.',
       items: facts.actionPlan14.length > 0 ? facts.actionPlan14 : [
         'Разделить первичный фильтр и экспертную оценку',
         'Настроить приоритеты по срочности',
         'Ввести правило фокуса: 1–2 задачи в потоке',
       ],
+      success: 'Доля обработанных за 2 часа растёт, очередь и средняя реакция снижаются.',
     },
     {
       window: '30 дней',
       color: '#F8FAFC',
       textColor: '#475569',
+      goal: 'Расширить ограничение и увидеть, не стало ли следующим узким местом внедрение.',
       items: facts.actionPlan30.length > 0 ? facts.actionPlan30 : [
         'Добавить ресурс или автоматизацию на узкий этап',
         'Внедрить scoring входящих по профилю',
         'Сравнить throughput до и после, найти следующее ограничение',
       ],
+      success: 'Больше лидов проходит первичный контакт, диагностики и оплаты растут, следующее ограничение видно в потоке.',
     },
   ]
 
   return (
-    <div className="space-y-3">
+    <div className="grid gap-3 lg:grid-cols-3">
       {steps.map((step) => (
         <div key={step.window} className="rounded-3xl border p-3.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
           <span className="mb-2.5 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: step.color, color: step.textColor }}>
             {step.window}
           </span>
+          <p className="mb-3 text-sm leading-relaxed" style={{ color: TEXT2 }}>
+            <span className="font-semibold" style={{ color: TEXT }}>Цель периода:</span> {step.goal}
+          </p>
           <div className="space-y-1.5">
             {step.items.map((item, i) => (
               <div key={i} className="flex gap-2.5 text-sm leading-snug" style={{ color: '#334155' }}>
@@ -2712,6 +2810,9 @@ function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
                 <span>{item}</span>
               </div>
             ))}
+          </div>
+          <div className="mt-3 rounded-2xl border px-3 py-2 text-xs leading-relaxed" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF', color: TEXT2 }}>
+            <span className="font-semibold" style={{ color: TEXT }}>Как понять, что сработало:</span> {step.success}
           </div>
         </div>
       ))}
@@ -2829,7 +2930,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Что делать первым',
         main: 'Не увеличивать рекламный бюджет, пока не разгружен входящий поток',
-        text: 'Дополнительный трафик сейчас будет не масштабировать продажи, а увеличивать очередь. Система уже получает достаточно входа, но не успевает быстро обработать заявки. Первое решение — зафиксировать SLA реакции, перераспределить входящие лиды, убрать ручную рутину с менеджеров и не давать лидам лежать без статуса.',
+        text: 'Дополнительный трафик сейчас будет не масштабировать продажи, а увеличивать очередь. Система уже получает достаточно входа, но не успевает быстро обработать заявки. Первое решение — зафиксировать SLA реакции, перераспределить входящие лиды, убрать ручную рутину и не давать заявкам лежать без статуса дольше нормы.',
         icon: Target,
         tone: 'red',
         tags: ['SLA реакции', 'Очередь', 'Менеджеры', 'Не лить трафик'],
@@ -2838,7 +2939,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Что показывает поток',
         main: 'Проблема не в количестве лидов, а в пропускной способности входящего этапа',
-        text: 'До первичного контакта спрос есть. После него вся система получает меньше качественного потока, чем могла бы. Поэтому оптимизация последующих этапов даст ограниченный эффект, пока входящий этап не начнёт пропускать больше заявок без задержки.',
+        text: 'До первичного контакта спрос уже создан. После него система недополучает поток, потому что первый операционный этап не успевает быстро провести лид дальше. Поэтому оптимизация КП, продаж или внедрения даст ограниченный эффект, пока входящий этап не начнёт стабильно пропускать больше заявок без задержки.',
         icon: Activity,
         tone: 'indigo',
         tags: ['Очередь до этапа', 'Потеря скорости', 'Недополученный поток'],
@@ -2847,7 +2948,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Почему это не маркетинг',
         main: 'Спрос есть, но система не переваривает входящий поток',
-        text: 'Если бы ограничение было в маркетинге, рост лидов должен был бы улучшать продажи. Здесь происходит обратное: лидов становится больше, реакция ухудшается, а оплаты не растут. Это значит, что слабое место находится не перед воронкой, а внутри процесса обработки.',
+        text: 'Если бы ограничение было в маркетинге, рост лидов должен был бы улучшать продажи. Здесь происходит обратное: лидов становится больше, реакция ухудшается, а оплаты не растут. Это значит, что слабое место находится не перед воронкой, а внутри процесса обработки и распределения входящих.',
         icon: BarChart3,
         tone: 'amber',
         tags: ['Спрос есть', 'Реакция падает', 'Оплаты стоят'],
@@ -2856,7 +2957,7 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Почему это опасно',
         main: 'Улучшение неограниченных этапов создаст больше работы, но не больше результата',
-        text: 'По Теории ограничений локальная эффективность не равна эффективности всей системы. Если ограничение в первичной обработке, то усиление маркетинга просто увеличит очередь. Команда станет занятее, но выручка не вырастет пропорционально.',
+        text: 'По Теории ограничений локальная эффективность не равна эффективности всей системы. Если ограничение в первичной обработке, то усиление маркетинга, продаж или вторичных этапов просто увеличит очередь перед узким местом. Команда станет занятее, но выручка не вырастет пропорционально.',
         icon: AlertTriangle,
         tone: 'amber',
         tags: ['Не лить трафик', 'Не плодить очередь', 'Не лечить не то'],
@@ -3110,10 +3211,11 @@ function GoldrattMethodologyBlock() {
 
 function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
   const [activeTab, setActiveTab] = useState<'flow' | 'trend' | 'team' | 'loss'>('flow')
+  const [showScoreInfo, setShowScoreInfo] = useState(false)
   if (!facts) return null
 
   const fileName = facts.sourceMetadata['Источник'] ?? facts.sourceMetadata.Source ?? 'Источник не записан'
-  const sheetName = facts.sourceMetadata['Лист'] ?? facts.sourceMetadata.Sheet ?? 'Не указан'
+  const sheetName = facts.sourceMetadata['Лист'] ?? facts.sourceMetadata.Sheet ?? '4 таблицы'
   const qualityScore = facts.sourceMetadata['Quality score'] ?? '—'
   const period = facts.sourceMetadata['Период'] ?? 'Не указан'
   const tabClass = (active: boolean) =>
@@ -3134,22 +3236,59 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
               Это исходные операционные таблицы, на которых построен Goldratt-разбор: карта потока, динамика по месяцам, загрузка команды и экономика потерь.
             </p>
           </div>
-          <StatusPill tone="blue">Оценка качества: {qualityScore}</StatusPill>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-1.5">
+              <StatusPill tone="blue">Оценка качества: {qualityScore}</StatusPill>
+              <button
+                type="button"
+                onClick={() => setShowScoreInfo((value) => !value)}
+                className="flex h-5 w-5 items-center justify-center rounded-full border transition-colors"
+                style={{ borderColor: '#BFDBFE', background: showScoreInfo ? '#DBEAFE' : '#EFF6FF', color: PRIMARY_BLUE }}
+                title="Что означает оценка качества"
+                aria-expanded={showScoreInfo}
+                aria-label="Подробнее об оценке качества данных"
+              >
+                <Info className="h-3 w-3" />
+              </button>
+            </div>
+            <span className="text-[10px]" style={{ color: TEXT3 }}>пригодность данных для анализа ограничения</span>
+          </div>
         </div>
+        {showScoreInfo && (
+          <div className="mt-3 rounded-2xl border px-3 py-2.5 text-[11px] leading-relaxed" style={{ background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}>
+            <span className="font-semibold">88 — это не оценка бизнеса.</span> Это оценка полноты и пригодности данных именно для Goldratt-разбора. Здесь уже есть карта потока, динамика, загрузка команды и экономика потерь, поэтому ограничение видно достаточно уверенно. До 100 не хватает разреза по каждому лиду: причин отказа, каналов, фактического времени по менеджерам и связки «лид → диагностика → оплата» на уровне каждой заявки.
+            <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              <span>+ карта потока по этапам</span>
+              <span>+ динамика по месяцам</span>
+              <span>+ загрузка команды</span>
+              <span>+ экономика потерь</span>
+              <span>− нет lead-level истории</span>
+              <span>− нет причин отказов по каждой заявке</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-3 px-4 py-3.5 sm:px-5">
         <div className="grid gap-2 text-xs sm:grid-cols-4">
           {[
             ['Файл', fileName],
-            ['Лист', sheetName],
+            ['Структура', '4 связанные таблицы'],
             ['Период', period],
-            ['Таблицы', '4 блока'],
+            ['Лист', sheetName],
           ].map(([label, value]) => (
             <div key={label} className="min-w-0 overflow-hidden rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
               <p className="font-semibold" style={{ color: TEXT3 }}>{label}</p>
-              <p className="mt-1 max-w-full truncate font-medium" style={{ color: TEXT }} title={value}>{value}</p>
+              <p className="mt-1 max-w-full break-words font-medium" style={{ color: TEXT }} title={value}>{value}</p>
             </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {['Карта потока', 'Динамика', 'Команда', 'Потери'].map((chip) => (
+            <span key={chip} className="rounded-full border px-3 py-1 text-[11px] font-semibold" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF', color: TEXT2 }}>
+              {chip}
+            </span>
           ))}
         </div>
 
@@ -3182,14 +3321,14 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
               <thead style={{ background: '#F8FAFC' }}>
                 <tr>
                   {['Этап', 'Вход/мес', 'Выход/мес', 'Конверсия', 'Ожидание', 'Норма', 'Загрузка', 'Очередь'].map((head) => (
-                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Этап' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {facts.processRows.map((row) => (
-                  <tr key={row.label}>
-                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.label}</td>
+                  <tr key={row.label} className="transition-colors hover:bg-slate-50" style={{ background: row.isBottleneck ? '#FFF7F7' : undefined }}>
+                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: row.isBottleneck ? '#B91C1C' : TEXT, background: row.isBottleneck ? '#FFF7F7' : CARD }}>{row.label}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.input}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.output}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.conversion}%</td>
@@ -3210,14 +3349,14 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
               <thead style={{ background: '#F8FAFC' }}>
                 <tr>
                   {['Месяц', 'Лиды', 'Обработано за 2 ч', 'Диагностики', 'Оплаты', 'Выручка', 'Потерянные лиды', 'Среднее время реакции'].map((head) => (
-                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Месяц' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {facts.trendRows.map((row) => (
-                  <tr key={row.month}>
-                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.month}</td>
+                  <tr key={row.month} className="transition-colors hover:bg-slate-50">
+                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT, background: CARD }}>{row.month}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.leads}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.processed}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.diagnostics}</td>
@@ -3238,14 +3377,14 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
               <thead style={{ background: '#F8FAFC' }}>
                 <tr>
                   {['Роль', 'Людей', 'Норма задач/мес', 'Факт задач/мес', 'Загрузка', 'Риск'].map((head) => (
-                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Роль' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {facts.teamRows.map((row) => (
-                  <tr key={row.role}>
-                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.role}</td>
+                  <tr key={row.role} className="transition-colors hover:bg-slate-50">
+                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT, background: CARD }}>{row.role}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.people}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.normTasks}</td>
                     <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.actualTasks}</td>
@@ -3264,14 +3403,14 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
               <thead style={{ background: '#F8FAFC' }}>
                 <tr>
                   {['Причина потерь', 'Объём', 'Потенциальная выручка', 'Комментарий'].map((head) => (
-                    <th key={head} className="border-b px-3 py-2 text-left font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT2 }}>{head}</th>
+                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Причина потерь' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {facts.lossRows.map((row) => (
-                  <tr key={row.reason}>
-                    <td className="border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.reason}</td>
+                  <tr key={row.reason} className="transition-colors hover:bg-slate-50">
+                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT, background: CARD }}>{row.reason}</td>
                     <td className="border-b px-3 py-2 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.volume}</td>
                     <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{formatCurrency(row.revenue, true)}</td>
                     <td className="border-b px-3 py-2" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.comment}</td>
@@ -3314,13 +3453,13 @@ function GoldrattDashboard({
         const card = byId(id)
         if (!card) return null
         return (
-          <div key={card.id} className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          <div key={card.id} className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <article
               role="button"
               tabIndex={0}
               onClick={() => onOpen(card.id)}
               onKeyDown={(event) => openFromKeyboard(event, card.id)}
-              className="flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
+              className="flex h-full flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
               style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
             >
               <div className="mb-2.5 flex items-start justify-between gap-3">
