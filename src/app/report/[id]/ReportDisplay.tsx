@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -1968,7 +1968,13 @@ function ExpensePreview({ items }: { items: ExpenseItem[] }) {
   )
 }
 
-function BreakevenPreview({ current, breakeven, gap }: { current: number | null; breakeven: number | null; gap: number | null }) {
+function BreakevenPreview({ current, breakeven, gap, targetRevenue, targetMargin }: {
+  current: number | null
+  breakeven: number | null
+  gap: number | null
+  targetRevenue?: number | null
+  targetMargin?: number | null
+}) {
   const progress = current !== null && breakeven !== null && breakeven > 0 ? clamp((current / breakeven) * 100) : 0
   const tone: Tone = gap !== null && gap > 0 ? 'red' : 'green'
   return (
@@ -1980,9 +1986,27 @@ function BreakevenPreview({ current, breakeven, gap }: { current: number | null;
       <div className="h-3 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
         <div className="h-full rounded-full" style={{ width: `${progress}%`, background: TONES[tone].fill }} />
       </div>
-      <div className="space-y-1 text-[11px]" style={{ color: TEXT2 }}>
-        <p>Средняя выручка за период: {formatCurrency(current, true)}</p>
-        <p>Точка безубыточности: {formatCurrency(breakeven, true)}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+          <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Средняя выручка</p>
+          <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TEXT }}>{formatCurrency(current, true)}</p>
+        </div>
+        <div className="rounded-xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+          <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Точка безубыточности</p>
+          <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TEXT }}>{formatCurrency(breakeven, true)}</p>
+        </div>
+        {gap !== null && gap > 0 && (
+          <div className="rounded-xl border px-2.5 py-1.5" style={{ background: TONES.red.bg, borderColor: TONES.red.border }}>
+            <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Не хватает</p>
+            <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TONES.red.text }}>{formatCurrency(gap, true)}/мес</p>
+          </div>
+        )}
+        {targetRevenue != null && (
+          <div className="rounded-xl border px-2.5 py-1.5" style={{ background: TONES.indigo.bg, borderColor: TONES.indigo.border }}>
+            <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Цель ({targetMargin ?? 10}% маржи)</p>
+            <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TONES.indigo.text }}>{formatCurrency(targetRevenue, true)}</p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -2044,8 +2068,12 @@ function CardPreview({
             <MetricChip label="Средние расходы" value={formatCurrency(pnlFacts.avgCosts, true)} tone="slate" />
           </div>
         )
-      case 'breakeven':
-        return <BreakevenPreview current={pnlFacts.avgRevenue} breakeven={pnlFacts.breakevenRevenue} gap={pnlFacts.gapToBreakeven} />
+      case 'breakeven': {
+        const tgt = pnlFacts.breakevenRevenue !== null && pnlFacts.targetMargin !== null
+          ? Math.round(pnlFacts.breakevenRevenue / (1 - pnlFacts.targetMargin / 100))
+          : null
+        return <BreakevenPreview current={pnlFacts.avgRevenue} breakeven={pnlFacts.breakevenRevenue} gap={pnlFacts.gapToBreakeven} targetRevenue={tgt} targetMargin={pnlFacts.targetMargin} />
+      }
       case 'constraint':
         return (
           <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
@@ -2416,7 +2444,7 @@ function PnlActionCard({ card }: { card: DetailCard }) {
   if (!action) return null
   const colors = TONES[action.tone]
   return (
-    <aside className="flex flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
+    <aside className="flex h-full flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
       <div className="flex items-start gap-3">
         <IconBadge icon={action.icon} tone={action.tone} />
         <div>
@@ -2425,9 +2453,9 @@ function PnlActionCard({ card }: { card: DetailCard }) {
         </div>
       </div>
       <p className="text-[1.05rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
-      <p className="text-[0.94rem] leading-[1.62]" style={{ color: '#334155' }}>{action.text}</p>
+      <p className="flex-1 text-[0.94rem] leading-[1.62]" style={{ color: '#334155' }}>{action.text}</p>
       {action.tags && action.tags.length > 0 && (
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div className="mt-auto flex flex-wrap gap-2 pt-1">
           {action.tags.map((tag) => (
             <span key={tag} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}>
               {tag}
@@ -2461,17 +2489,81 @@ function DashboardCards({
     }
   }
 
+  if (agentType === 'pnl') {
+    return (
+      <div className="space-y-4">
+        {cards.map((card) => {
+          const hasRightCard = pnlActionContent(card) !== null
+          return (
+            <div
+              key={card.id}
+              className={hasRightCard ? 'grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]' : ''}
+            >
+              <article
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpen(card.id)}
+                onKeyDown={(event) => openFromKeyboard(event, card.id)}
+                className="flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
+                style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
+              >
+                <div className="mb-2.5 flex items-start gap-3">
+                  <IconBadge icon={card.icon} tone={card.tone} />
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
+                    <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="mb-2">
+                    <p
+                      className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`}
+                      style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
+                    >
+                      {card.value}
+                    </p>
+                    {card.support && (
+                      <p className="mt-1 text-sm leading-snug" style={{ color: '#334155' }}>
+                        {card.support}
+                      </p>
+                    )}
+                  </div>
+                  <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
+                </div>
+                <div className="mt-2 flex items-center justify-end gap-3 pt-1.5">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpen(card.id)
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold"
+                    style={{ color: accent }}
+                  >
+                    Что это значит
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </article>
+              {hasRightCard && <PnlActionCard card={card} />}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
-    <section className={agentType === 'pnl' ? 'grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]' : 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'}>
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
       {cards.map((card) => (
-        <Fragment key={card.id}>
         <article
+          key={card.id}
           role="button"
           tabIndex={0}
           onClick={() => onOpen(card.id)}
           onKeyDown={(event) => openFromKeyboard(event, card.id)}
           className={`flex flex-col self-start rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-            agentType === 'pnl' && card.id === 'actions' ? 'xl:col-span-2' : card.featured && agentType !== 'pnl' ? 'md:col-span-2 xl:col-span-2' : ''
+            card.featured ? 'md:col-span-2 xl:col-span-2' : ''
           }`}
           style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
         >
@@ -2483,10 +2575,9 @@ function DashboardCards({
                 <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
               </div>
             </div>
-            {agentType !== 'pnl' && <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>}
+            <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
           </div>
-
-          <div className={agentType === 'pnl' ? 'flex-none' : `flex-1 ${card.featured ? 'min-h-[104px]' : 'min-h-[88px]'}`}>
+          <div className={`flex-1 ${card.featured ? 'min-h-[104px]' : 'min-h-[88px]'}`}>
             <div className="mb-2">
               <p
                 className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`}
@@ -2502,15 +2593,10 @@ function DashboardCards({
             </div>
             <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
           </div>
-
           <div className="mt-2 flex items-center justify-between gap-3 pt-1.5">
-            {agentType === 'pnl'
-              ? <span />
-              : (
-                <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
-                  {card.statusLabel}
-                </p>
-              )}
+            <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
+              {card.statusLabel}
+            </p>
             <button
               type="button"
               onClick={(event) => {
@@ -2520,13 +2606,11 @@ function DashboardCards({
               className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold"
               style={{ color: accent }}
             >
-              {agentType === 'pnl' ? 'Что это значит' : 'Подробнее'}
+              Подробнее
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         </article>
-        {agentType === 'pnl' && card.id !== 'actions' && <PnlActionCard card={card} />}
-        </Fragment>
       ))}
     </section>
   )
