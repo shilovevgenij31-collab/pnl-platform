@@ -1139,7 +1139,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
       tone: 'slate',
       icon: Info,
       value: 'Нужна детализация',
-      support: 'P&L по клубам, трафик, УК, ФОТ по сменам',
+      support: 'Без P&L по клубам, трафика и расшифровки УК нельзя точно понять источник проблемы.',
       statusLabel: 'Данные ограничены',
       detailTitle: 'Ограничения анализа',
       detailLead: 'Сводный P&L показывает, что проблема есть, но не показывает, где именно она сидит. Поэтому сейчас опасно принимать радикальные решения по всей сети одним движением.',
@@ -1365,7 +1365,7 @@ function ChipNav({
   onOpenCard: (id: string) => void
 }) {
   return (
-    <div className="mb-4 flex flex-wrap gap-2 print:hidden">
+    <div className="mb-4 flex flex-wrap justify-center gap-2 print:hidden">
       {cards.map((card, index) => (
         <button
           key={card.id}
@@ -1443,52 +1443,109 @@ function MiniTrend({ labels, revenue, profit, accent }: { labels: string[]; reve
     return <p className="text-xs leading-relaxed" style={{ color: TEXT2 }}>Недостаточно данных для тренда.</p>
   }
 
-  const width = 280
-  const height = 96
-  const values = [...revenue, ...profit]
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
+  const W = 400
+  const H = 152
+  const pad = { top: 14, right: 14, bottom: 28, left: 44 }
+  const plotW = W - pad.left - pad.right
+  const plotH = H - pad.top - pad.bottom
+  const n = revenue.length
+  const allValues = [...revenue, ...profit]
+  const minV = Math.min(0, ...allValues)
+  const maxV = Math.max(...allValues)
+  const range = maxV - minV || 1
 
+  const toX = (i: number) => pad.left + (i / (n - 1)) * plotW
+  const toY = (v: number) => pad.top + plotH - ((v - minV) / range) * plotH
   const toPath = (series: number[]) =>
-    series
-      .map((value, index) => {
-        const x = (index / (series.length - 1)) * width
-        const y = height - ((value - min) / range) * (height - 16) - 8
-        return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
-      })
-      .join(' ')
+    series.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(' ')
+
+  const bestVal = Math.max(...profit)
+  const worstVal = Math.min(...profit)
+  const bestIdx = profit.indexOf(bestVal)
+  const worstIdx = profit.indexOf(worstVal)
+
+  const ticks = Array.from({ length: 4 }, (_, i) => minV + (range / 3) * i).reverse()
+
+  const fmt = (v: number) => {
+    const sign = v < 0 ? '−' : ''
+    const abs = Math.abs(v)
+    if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1).replace(/\.0$/, '')}м`
+    if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}к`
+    return v === 0 ? '0' : `${sign}${Math.round(abs)}`
+  }
+
+  const DASH = 1200
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-24 w-full" role="img" aria-label="Динамика выручки и прибыли">
-        {[0, 1, 2].map((line) => (
-          <line key={line} x1="0" x2={width} y1={16 + line * 24} y2={16 + line * 24} stroke="#E2E8F0" strokeDasharray="3 5" />
-        ))}
+    <div className="mt-1">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="h-36 w-full overflow-visible"
+        role="img"
+        aria-label={`Динамика выручки и прибыли: ${labels[0] ?? 'начало'} — ${labels.at(-1) ?? 'конец'}`}
+      >
+        {ticks.map((tick) => {
+          const y = toY(tick)
+          return (
+            <g key={tick}>
+              <line x1={pad.left} x2={W - pad.right} y1={y} y2={y} stroke={BORDER} strokeDasharray="3 5" strokeWidth="0.8" />
+              <text x={pad.left - 6} y={y + 4} textAnchor="end" fontSize="9.5" fill={TEXT3}>{fmt(tick)}</text>
+            </g>
+          )
+        })}
+
+        {minV < 0 && (
+          <line x1={pad.left} x2={W - pad.right} y1={toY(0)} y2={toY(0)} stroke="#94A3B8" strokeWidth="1" />
+        )}
+
         <path
           d={toPath(revenue)}
           fill="none"
           stroke={accent}
-          strokeWidth="3"
+          strokeWidth="2.5"
           strokeLinecap="round"
-          style={!reducedMotion ? { strokeDasharray: 800, strokeDashoffset: 0, animation: 'miniDraw 700ms ease-out both' } : undefined}
+          strokeLinejoin="round"
+          style={!reducedMotion ? { strokeDasharray: DASH, strokeDashoffset: 0, animation: 'miniDraw 750ms ease-out both' } : undefined}
         />
         <path
           d={toPath(profit)}
           fill="none"
           stroke="#F59E0B"
-          strokeWidth="3"
+          strokeWidth="2.5"
           strokeLinecap="round"
-          style={!reducedMotion ? { strokeDasharray: 800, strokeDashoffset: 0, animation: 'miniDraw 950ms ease-out 120ms both' } : undefined}
+          strokeLinejoin="round"
+          style={!reducedMotion ? { strokeDasharray: DASH, strokeDashoffset: 0, animation: 'miniDraw 1000ms ease-out 80ms both' } : undefined}
         />
+
+        <circle cx={toX(bestIdx)} cy={toY(bestVal)} r="4.5" fill="#10B981" />
+        <circle cx={toX(worstIdx)} cy={toY(worstVal)} r="4.5" fill="#EF4444" />
+
+        <text x={pad.left} y={H - 6} textAnchor="start" fontSize="9" fill={TEXT3}>{labels[0] ?? ''}</text>
+        <text x={W - pad.right} y={H - 6} textAnchor="end" fontSize="9" fill={TEXT3}>{labels.at(-1) ?? ''}</text>
       </svg>
-      <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: TEXT3 }}>
-        <span>{labels[0] ?? 'Старт периода'}</span>
-        <span>{labels.at(-1) ?? 'Последний месяц'}</span>
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]" style={{ color: TEXT3 }}>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-0.5 w-3.5 rounded-full" style={{ background: accent }} />
+          Выручка
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-0.5 w-3.5 rounded-full" style={{ background: '#F59E0B' }} />
+          Прибыль
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#10B981' }} />
+          {labels[bestIdx] ?? 'Лучший'}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#EF4444' }} />
+          {labels[worstIdx] ?? 'Худший'}
+        </span>
       </div>
+
       <style jsx>{`
         @keyframes miniDraw {
-          from { stroke-dashoffset: 800; }
+          from { stroke-dashoffset: 1200; }
           to   { stroke-dashoffset: 0; }
         }
       `}</style>
@@ -1777,12 +1834,7 @@ function CardPreview({
       case 'actions':
         return null
       case 'limitations':
-        return (
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <MetricChip label="Чего не хватает" value="P&L по клубам" tone="amber" />
-            <MetricChip label="Что ещё нужно" value="Трафик и УК" tone="slate" />
-          </div>
-        )
+        return null
       case 'anomalies':
         return (
           <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -2410,6 +2462,8 @@ function SourceTableBlockV2({
   expanded: boolean
   onToggleExpanded: () => void
 }) {
+  const [showScoreInfo, setShowScoreInfo] = useState(false)
+
   if (!source || source.rows.length === 0) return null
 
   const currencySymbol = detectCurrencySymbol(source)
@@ -2441,18 +2495,31 @@ function SourceTableBlockV2({
             </p>
           </div>
           {score && (
-            <div className="flex flex-col items-end gap-0.5">
-              <StatusPill tone="blue">Оценка качества: {score}</StatusPill>
-              <span
-                className="text-[10px]"
-                style={{ color: TEXT3 }}
-                title="Оценка показывает, насколько загруженный лист похож на P&L: есть ли выручка, расходы, прибыль/маржа, ненулевые числа, периоды и достаточный размер таблицы. Это не оценка бизнеса, а оценка пригодности данных для анализа."
-              >
-                пригодность данных для анализа
-              </span>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-1.5">
+                <StatusPill tone="blue">Оценка качества: {score}</StatusPill>
+                <button
+                  type="button"
+                  onClick={() => setShowScoreInfo((v) => !v)}
+                  className="flex h-5 w-5 items-center justify-center rounded-full border transition-colors"
+                  style={{ borderColor: '#BFDBFE', background: showScoreInfo ? '#DBEAFE' : '#EFF6FF', color: PRIMARY_BLUE }}
+                  title="Что означает оценка качества"
+                  aria-expanded={showScoreInfo}
+                  aria-label="Подробнее об оценке качества"
+                >
+                  <Info className="h-3 w-3" />
+                </button>
+              </div>
+              <span className="text-[10px]" style={{ color: TEXT3 }}>пригодность данных для анализа</span>
             </div>
           )}
         </div>
+        {score && showScoreInfo && (
+          <div className="mt-3 rounded-2xl border px-3 py-2.5 text-[11px] leading-relaxed" style={{ background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}>
+            <span className="font-semibold">Оценка качества — это не оценка бизнеса.</span> Алгоритм проверяет, пригодна ли таблица для разбора: найдены ли выручка, расходы, прибыль, периоды, ненулевые значения и достаточный объём данных.{' '}
+            <span className="font-semibold">{score}/100</span> — данных достаточно для управленческого анализа. Без P&L по клубам, трафика и расшифровки УК часть выводов остаётся предварительной.
+          </div>
+        )}
       </div>
 
       <div className="space-y-3 px-4 py-3.5 sm:px-5">
