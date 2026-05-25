@@ -122,6 +122,12 @@ interface PnlFacts {
   expenseBreakdown: ExpenseItem[]
   profitableMonths: number
   totalMonths: number
+  bestMonthLabel: string | null
+  bestMonthRevenue: number | null
+  bestMonthProfit: number | null
+  worstMonthLabel: string | null
+  worstMonthRevenue: number | null
+  worstMonthProfit: number | null
   mainDiagnosis: string
   mainConstraint: string
   limitations: string[]
@@ -228,6 +234,38 @@ function formatCurrency(value: number | null, compact = false): string {
 function formatPercent(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return 'См. отчёт'
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+}
+
+function formatNumber(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat('ru-RU').format(Math.round(value))
+}
+
+function detectCurrencySymbol(source: ParsedSource | null): string {
+  if (!source) return '₽'
+  const combined = [source.metadata['Источник'] ?? '', source.metadata.Source ?? '', ...source.rows.flat()].join(' ')
+  const lower = combined.toLowerCase()
+  if (combined.includes('$') || /\busd\b/.test(lower) || /доллар/.test(lower)) return '$'
+  if (combined.includes('€') || /\beur\b/.test(lower) || /евро/.test(lower)) return '€'
+  return '₽'
+}
+
+function isPercentLabel(label: string): boolean {
+  return /%|марж|рентабельн|доля/i.test(label)
+}
+
+function looksNumericCell(value: string): boolean {
+  return /^[-−]?\d[\d\s.,]*%?$/.test(value.trim())
+}
+
+function formatSourceCell(label: string, cell: string, currencySymbol: string): string {
+  const trimmed = cell.trim()
+  if (!trimmed) return '—'
+  if (!looksNumericCell(trimmed)) return trimmed
+  if (isPercentLabel(label)) return trimmed
+  const numeric = parseNumber(trimmed)
+  if (numeric === null) return trimmed
+  return `${numeric < 0 ? '−' : ''}${formatNumber(Math.abs(numeric))} ${currencySymbol}`
 }
 
 function clamp(value: number, min = 0, max = 100): number {
@@ -387,12 +425,6 @@ function extractPreferredSentence(text: string, patterns: RegExp[], fallback: st
   return firstSentence(text, fallback, 180)
 }
 
-function trimSentence(value: string, max = 140): string {
-  const cleaned = cleanText(value)
-  if (!cleaned) return ''
-  return cleaned.length > max ? `${cleaned.slice(0, max - 1).trim()}…` : cleaned
-}
-
 function normalizedLower(value?: string | null): string {
   return cleanText(value ?? '').toLowerCase()
 }
@@ -487,6 +519,11 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
   const gapToBreakeven = avgRevenue !== null && breakevenRevenue !== null ? breakevenRevenue - avgRevenue : null
   const profitableMonths = profitSeries.filter((value) => value > 0).length
   const totalMonths = profitSeries.length
+  const hasCompleteSeries = profitSeries.length > 0 && revenueSeries.length === profitSeries.length && monthLabels.length === profitSeries.length
+  const minValue = hasCompleteSeries ? Math.min(...profitSeries) : null
+  const maxValue = hasCompleteSeries ? Math.max(...profitSeries) : null
+  const minIdx = minValue !== null ? profitSeries.indexOf(minValue) : -1
+  const maxIdx = maxValue !== null ? profitSeries.indexOf(maxValue) : -1
 
   const expenseBreakdown: ExpenseItem[] = [
     {
@@ -592,6 +629,12 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
     expenseBreakdown,
     profitableMonths,
     totalMonths,
+    bestMonthLabel: maxIdx >= 0 ? (monthLabels[maxIdx] ?? null) : null,
+    bestMonthRevenue: maxIdx >= 0 ? revenueSeries[maxIdx] ?? null : null,
+    bestMonthProfit: maxValue,
+    worstMonthLabel: minIdx >= 0 ? (monthLabels[minIdx] ?? null) : null,
+    worstMonthRevenue: minIdx >= 0 ? revenueSeries[minIdx] ?? null : null,
+    worstMonthProfit: minValue,
     mainDiagnosis,
     mainConstraint,
     limitations: limitationsList,
@@ -659,9 +702,11 @@ function sourceWarningsLabel(source: ParsedSource | null): string {
   return warnings
 }
 
-function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard[] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard[] {
   const gap = facts.gapToBreakeven
   const negativeMonths = facts.totalMonths > 0 ? facts.totalMonths - facts.profitableMonths : null
+  const top3Amount = facts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.amount ?? 0), 0)
   const expenseLead = facts.expenseBreakdown
     .slice(0, 3)
     .map((item) => `${item.label} ${item.pct !== null ? `${item.pct}%` : formatCurrency(item.amount, true)}`)
@@ -679,8 +724,7 @@ function buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCard
 
   const targetMgn = facts.targetMargin ?? 10
   const marginGap = Math.round(targetMgn - (facts.avgMargin ?? 0))
-  const top3Amount = facts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.amount ?? 0), 0)
-  const targetRevenue = facts.breakevenRevenue !== null ? Math.round(facts.breakevenRevenue / (1 - targetMgn / 100)) : null
+    const targetRevenue = facts.breakevenRevenue !== null ? Math.round(facts.breakevenRevenue / (1 - targetMgn / 100)) : null
 
   return [
     {
@@ -941,6 +985,173 @@ function buildGoldrattCards(facts: GoldrattFacts): DetailCard[] {
   ]
 }
 
+function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null): DetailCard[] {
+  const gap = facts.gapToBreakeven
+  const negativeMonths = facts.totalMonths > 0 ? facts.totalMonths - facts.profitableMonths : null
+  const top3Percent = facts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.pct ?? 0), 0)
+  const fixedBase = (facts.expenseBreakdown.find((item) => /ук/i.test(item.label))?.amount ?? 0)
+    + (facts.expenseBreakdown.find((item) => /фот/i.test(item.label))?.amount ?? 0)
+    + (facts.expenseBreakdown.find((item) => /аренд/i.test(item.label))?.amount ?? 0)
+  const targetMargin = facts.targetMargin ?? 10
+  const targetRevenue = facts.breakevenRevenue !== null ? Math.round(facts.breakevenRevenue / (1 - targetMargin / 100)) : null
+  const breakevenProgress =
+    facts.avgRevenue !== null && facts.breakevenRevenue !== null && facts.breakevenRevenue > 0
+      ? Math.round((facts.avgRevenue / facts.breakevenRevenue) * 100)
+      : null
+  const annualLeak = gap !== null ? gap * 12 : null
+  const bestMonth = facts.bestMonthLabel && facts.bestMonthProfit !== null ? `${facts.bestMonthLabel} / ${formatCurrency(facts.bestMonthProfit, true)}` : 'лучший месяц найден в данных'
+  const worstMonth = facts.worstMonthLabel && facts.worstMonthProfit !== null ? `${facts.worstMonthLabel} / ${formatCurrency(facts.worstMonthProfit, true)}` : 'худший месяц найден в данных'
+
+  const cards: DetailCard[] = [
+    {
+      id: 'diagnosis',
+      title: 'Главный диагноз',
+      kicker: 'Что сломано',
+      tone: 'red',
+      icon: AlertTriangle,
+      value: 'Расходы выше выручки',
+      support: negativeMonths !== null ? `Убыток в ${negativeMonths} из ${facts.totalMonths} месяцев` : 'Прибыль появляется только точечно',
+      statusLabel: 'Критично',
+      detailTitle: 'Главный диагноз',
+      detailLead: 'Бизнес пока не доказал, что умеет зарабатывать стабильно. Прибыль появляется только в отдельных пиковых месяцах, а обычный режим работы остаётся убыточным.',
+      bullets: [
+        negativeMonths !== null
+          ? `${facts.profitableMonths} прибыльных месяца из ${facts.totalMonths} — это не обычная сезонность и не набор случайных провалов. Это модель, которая зарабатывает только при удачном совпадении спроса, загрузки и расходной базы. Плюсовые месяцы доказывают наличие спроса, но не доказывают, что сеть умеет регулярно превращать этот спрос в прибыль.`
+          : 'Прибыль появляется не как повторяемая операционная норма, а как отдельные всплески. Это значит, что бизнес нельзя считать здоровым только по одному удачному месяцу.',
+        'Главный риск — начать лечить ситуацию продажами. Если просто добавить маркетинг или любой ценой догонять выручку, можно увеличить оборот, но не изменить экономику: ФОТ, УК, продукты и операционная нагрузка могут вырасти вместе с потоком и снова съесть маржу.',
+        'Сводный P&L скрывает главный управленческий вопрос: проблема распределена по всей сети или несколько клубов тянут вниз общий результат. Это разные диагнозы. В первом случае нужно менять модель управления расходами, во втором — чинить или закрывать конкретные точки.',
+      ],
+      note: gap !== null ? `Средний разрыв до нуля: ${formatCurrency(gap, true)} в месяц. Это не разовый провал, а повторяющаяся утечка модели.` : undefined,
+      actionText: 'Первое управленческое изменение — разделить сеть на клубы-доноры, нейтральные клубы и клубы-пожиратели маржи. Для каждой группы нужны разные решения: масштабировать сильные точки, доводить нейтральные до порога, а проблемные разбирать по аренде, ФОТ, УК и загрузке.',
+      featured: true,
+    },
+    {
+      id: 'key-figures',
+      title: 'Ключевые цифры',
+      kicker: 'Факт и цель',
+      tone: toneForMargin(facts.avgMargin),
+      icon: CircleDollarSign,
+      value: formatPercent(facts.avgMargin),
+      support: `Средняя выручка ${formatCurrency(facts.avgRevenue, true)}, прибыль ${formatCurrency(facts.avgProfit, true)}`,
+      statusLabel: 'Факт и цель',
+      detailTitle: 'Ключевые цифры',
+      detailLead: `${formatPercent(facts.avgMargin)} средней маржи — это не просто плохой показатель. Это сигнал, что текущая модель теряет деньги в обычном режиме работы, а не только в отдельных провальных месяцах.`,
+      bullets: [
+        gap !== null
+          ? `Разрыв ${formatCurrency(gap, true)}/мес выглядит небольшим на фоне оборота, но за год превращается примерно в ${formatCurrency(gap * 12, true)} утечки. Это деньги, которые могли бы стать бюджетом на ремонт, маркетинг, команду, развитие или финансовую подушку.`
+          : 'Даже небольшой ежемесячный минус в модели сети быстро превращается в годовую утечку, которая забирает ресурс у развития и резерва.',
+        `${formatCurrency(facts.breakevenRevenue, true)} — это не цель бизнеса, а уровень, на котором сеть просто перестаёт терять деньги. Если управлять компанией с целью "дойти до нуля", она остаётся без запаса на сезонность, рост аренды, текучку персонала и ошибки управления.`,
+        `Ориентир около ${targetRevenue !== null ? formatCurrency(targetRevenue, true) : '10,6 млн ₽'} для ${targetMargin}% маржи нельзя воспринимать как простую задачу продаж. Если расходы растут вместе с выручкой, рост оборота не даст нужного эффекта: нужно считать прибыль после всех дополнительных затрат.`,
+      ],
+      note: `Последний месяц: ${formatCurrency(facts.lastRevenue, true)} выручки и ${formatCurrency(facts.lastProfit, true)} прибыли.`,
+      actionText: 'План нужно разделить на два контура: сколько можно добрать выручкой и сколько нужно снять или зафиксировать из расходной базы. Каждая мера должна оцениваться по вкладу в прибыль, а не по росту оборота.',
+    },
+    {
+      id: 'trend-anomalies',
+      title: 'Динамика и аномалии',
+      kicker: '18 месяцев',
+      tone: 'blue',
+      icon: TrendingUp,
+      value: 'Прибыль появляется точечно, а не системно',
+      support: `Лучший: ${bestMonth}. Худший: ${worstMonth}.`,
+      statusLabel: 'Основано на данных',
+      detailTitle: 'Динамика и аномалии',
+      detailLead: 'Динамика показывает не просто сезонность. Она показывает, что у бизнеса нет повторяемого механизма прибыли: плюс появляется точечно, а минус возвращается как базовый сценарий.',
+      bullets: [
+        'Сильный месяц нельзя читать как доказательство, что "всё может работать". Это скорее проверка верхнего потенциала: спрос действительно может быть, и сеть способна показать прибыль. Но если после пика прибыль снова не повторяется, управленческий вопрос в том, какие условия сделали пик прибыльным и можно ли воспроизвести их регулярно.',
+        'Слабый месяц показывает другую сторону модели: когда выручка падает, расходная база не падает синхронно. Это тест на гибкость бизнеса. Если в слабый сезон ФОТ, УК, аренда и операционные затраты продолжают давить, у сети нет механизма автоматической адаптации.',
+        'Особенно опасны месяцы с нормальной выручкой и отрицательной прибылью. Они показывают, что проблема не сводится к маркетингу или сезонности: она может сидеть в структуре расходов, распределении затрат между клубами или тяжёлой базе отдельных точек.',
+      ],
+      note: 'Сводный P&L показывает траекторию сети, но не отвечает, какие именно клубы создают выброс.',
+      actionText: 'Нужно построить сезонную модель управления: для пиковых месяцев — правила удержания маржи, для обычных — контроль базы, для провальных — заранее подготовленный сценарий снижения переменных и полуфиксированных расходов.',
+    },
+    {
+      id: 'profit-drag',
+      title: 'Что съедает прибыль',
+      kicker: 'Ключевая проблема',
+      tone: 'red',
+      icon: TrendingDown,
+      value: `УК + ФОТ + аренда = ${top3Percent}% выручки`,
+      support: 'Тяжёлая база расходов не снижается вместе с выручкой',
+      statusLabel: 'Ключевая проблема',
+      detailTitle: 'Что съедает прибыль',
+      detailLead: 'Главная проблема не в том, что расходы "большие". Главная проблема в том, что база расходов ведёт себя как жёсткая конструкция, а выручка — как сезонная переменная.',
+      bullets: [
+        `УК, ФОТ и аренда вместе занимают около ${top3Percent}% средней выручки. Это значит, что ещё до нормальной операционной гибкости бизнес почти полностью загружен крупными статьями. В сильные месяцы сеть может пройти этот порог, но в обычные или слабые месяцы база не успевает снижаться вслед за выручкой.`,
+        'Эти расходы нельзя лечить одинаково. Аренда — это договорной и переговорный контур. ФОТ — вопрос загрузки, смен, графиков и операционной дисциплины. УК — отдельный "чёрный ящик", который нужно расшифровывать по статьям. Если смешать всё в одну категорию "расходы", решение будет грубым и может навредить.',
+        'Самая частая ошибка — резать видимые мелкие статьи: продукты, персонал, коммунальные, сервисные расходы. Это может ухудшить клиентский опыт и не сдвинуть главную экономику. Если проблема сидит в аренде, УК или структуре ФОТ, экономия на продуктах не спасёт модель.',
+        'Настоящий вопрос не "какая статья самая большая", а "какая статья не соответствует выручке конкретного клуба". Один клуб может быть здоровым, второй — на грани, а третий — пожирать маржу всей сети. Сводный отчёт этого не показывает.',
+      ],
+      note: `База крупных статей: ${formatCurrency(fixedBase, true)}/мес. Разрыв до нуля: ${gap !== null ? formatCurrency(gap, true) : 'нет точного значения'}/мес. Порог: ${formatCurrency(facts.breakevenRevenue, true)}/мес.`,
+      actionText: 'Пересобрать управление расходной базой по клубам: посчитать долю аренды, ФОТ и УК от выручки, сравнить с загрузкой и маржой, затем разделить точки на доноров, нейтральные и пожирателей маржи. По каждой группе нужны разные решения.',
+      featured: true,
+    },
+    {
+      id: 'breakeven',
+      title: 'Точка безубыточности',
+      kicker: 'Порог выживания',
+      tone: toneForGap(gap),
+      icon: Gauge,
+      value: breakevenProgress !== null ? `${breakevenProgress}% от порога` : 'Порог рассчитан',
+      support: gap !== null ? `Не хватает ${formatCurrency(gap, true)}/мес` : 'Средняя выручка близка к порогу',
+      statusLabel: gap !== null && gap > 0 ? 'Ниже порога' : 'По отчету',
+      detailTitle: 'Точка безубыточности',
+      detailLead: '90% от порога — это не "почти нормально". Это бизнес без запаса прочности.',
+      bullets: [
+        gap !== null
+          ? `Разрыв ${formatCurrency(gap, true)}/мес может казаться управляемым на фоне оборота, но как средняя ситуация он превращается примерно в ${formatCurrency(annualLeak, true)} годовой потери. Это не мелкий недобор, а деньги, которые забираются из развития, ремонта, маркетинга, команды и резерва.`
+          : 'Разрыв до порога нужно читать не как одну цифру, а как устойчивость модели: насколько бизнес выдерживает слабый месяц, рост аренды или ошибку управления.',
+        `${formatCurrency(facts.breakevenRevenue, true)} — это нижняя граница выживания. Если бизнес целится только в неё, он остаётся на нуле без права на ошибку: любой слабый месяц, перерасход ФОТ или рост аренды снова отправляет сеть в минус.`,
+        `Целевой ориентир ${targetRevenue !== null ? formatCurrency(targetRevenue, true) : 'выше порога'} имеет смысл только при условии, что расходы не растут пропорционально выручке. Нужно считать не выручку до цели, а прибыль после всех дополнительных затрат.`,
+      ],
+      note: targetRevenue !== null ? `Для маржи ${targetMargin}% нужен ориентир около ${formatCurrency(targetRevenue, true)}.` : undefined,
+      actionText: 'Разделить два сценария: выход в ноль и выход в нормальную маржу. Gap лучше закрывать не одной мерой, а комбинацией: часть через рост выручки, часть через снижение или фиксацию базы расходов.',
+    },
+    {
+      id: 'actions',
+      title: 'Сценарии и план действий',
+      kicker: 'Первый шаг',
+      tone: 'indigo',
+      icon: CheckCircle2,
+      value: 'Первое действие: расшифровать УК',
+      support: 'Срок: 7 дней. Потом P&L по клубам и решения по базе.',
+      statusLabel: 'Первый шаг',
+      detailTitle: 'Сценарии и план действий',
+      detailLead: 'Первый шаг — не "продать больше", а понять, где именно течёт маржа и какие точки создают убыток.',
+      bullets: [
+        'Сценарий роста выручки выглядит понятным, но не обязательно безопасным. Если сеть начнёт покупать трафик или усиливать продажи без контроля расходов, она может увеличить оборот и одновременно увеличить операционную нагрузку. Тогда бизнес станет больше, но не прибыльнее.',
+        'Сценарий сокращения расходов опасен, если делать его грубо. Нельзя резать ФОТ, продукты или сервис по всей сети: в сильных клубах это может убить клиентский опыт, а в слабых не решить проблему, если корень сидит в аренде, УК или формате точки.',
+        'Самый реалистичный сценарий — комбинированный: поднять выручку там, где есть потенциал спроса, и одновременно пересобрать базу там, где она очевидно съедает маржу. Это не один общий план для всей сети, а разные решения для разных типов клубов.',
+      ],
+      note: facts.actions[0] ?? 'Первое действие должно дать максимум ясности, а не имитацию анализа.',
+      actionText: 'За 7 дней собрать управленческую карту сети: P&L по клубам, УК, аренду и ФОТ по точкам. За 14 дней разделить клубы на доноров, нейтральные и пожирателей маржи. За 30 дней принять решения по каждому типу: масштабировать, чинить, пересматривать договоры или готовить жёсткий сценарий.',
+    },
+    {
+      id: 'limitations',
+      title: 'Ограничения анализа',
+      kicker: 'Где нужна детализация',
+      tone: 'slate',
+      icon: Info,
+      value: 'Нужна детализация',
+      support: 'P&L по клубам, трафик, УК, ФОТ по сменам',
+      statusLabel: 'Данные ограничены',
+      detailTitle: 'Ограничения анализа',
+      detailLead: 'Сводный P&L показывает, что проблема есть, но не показывает, где именно она сидит. Поэтому сейчас опасно принимать радикальные решения по всей сети одним движением.',
+      bullets: [
+        'Без P&L по клубам невозможно понять, сеть в целом убыточна или несколько точек уничтожают результат. Если вся сеть работает плохо, нужно менять модель управления расходами. Если часть клубов прибыльна, а часть тянет вниз, общие сокращения могут ударить по сильным точкам и не решить проблему слабых.',
+        'Без данных по трафику и посещаемости нельзя понять, проблема в спросе, цене, конверсии или загрузке. Один и тот же убыток может означать разные вещи: мало людей, неправильная цена, низкая конверсия, дорогая база или неэффективный график персонала.',
+        'Без расшифровки УК нельзя понять, это управляемая статья или обязательная нагрузка. Если внутри УК есть завышенные или не привязанные к выручке расходы, там может быть быстрый резерв. Если это обязательная нагрузка, решение должно быть в модели распределения расходов по клубам.',
+        'Без ФОТ по сменам нельзя понять, персонал раздут или обслуживает реальный поток. Резать ФОТ вслепую опасно: можно ухудшить сервис и потерять выручку, но если ФОТ не связан с загрузкой, это уже проблема графиков, смен и планирования.',
+      ],
+      note: sourceWarningsLabel(source),
+      actionText: 'Не принимать сейчас решения уровня "режем всё", "льём маркетинг" или "сокращаем персонал по всей сети". Сначала построить карту сети: доноры, точки на нуле, пожиратели маржи. Для каждой группы нужны разные решения.',
+    },
+  ]
+
+  const order = ['diagnosis', 'key-figures', 'profit-drag', 'trend-anomalies', 'breakeven', 'actions', 'limitations']
+  return cards.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+}
+
 function IconBadge({ icon: Icon, tone }: { icon: LucideIcon; tone: Tone }) {
   const colors = TONES[tone]
   return (
@@ -1097,7 +1308,8 @@ function Header({
   )
 }
 
-function IntroBlock({ agentType }: { agentType: ReportPageData['agentType'] }) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _IntroBlock({ agentType }: { agentType: ReportPageData['agentType'] }) {
   const items: IntroFact[] =
     agentType === 'pnl'
       ? [
@@ -1142,17 +1354,11 @@ function ChipNav({
   onOpenCard,
   showFullReport,
   onToggleFullReport,
-  showSource,
-  onToggleSource,
-  hasSource,
 }: {
   cards: DetailCard[]
   onOpenCard: (id: string) => void
   showFullReport: boolean
   onToggleFullReport: () => void
-  showSource: boolean
-  onToggleSource: () => void
-  hasSource: boolean
 }) {
   return (
     <div className="mb-4 flex flex-wrap gap-2 print:hidden">
@@ -1167,15 +1373,57 @@ function ChipNav({
           {String(index + 1).padStart(2, '0')} {card.title}
         </button>
       ))}
-      {hasSource && (
-        <button type="button" onClick={onToggleSource} className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
-          {showSource ? 'Скрыть данные' : 'Показать данные'}
-        </button>
-      )}
       <button type="button" onClick={onToggleFullReport} className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
         {showFullReport ? 'Скрыть технические детали' : 'Показать полный текстовый отчёт'}
       </button>
     </div>
+  )
+}
+
+function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] }) {
+  const isPnl = agentType === 'pnl'
+  const items: IntroFact[] = isPnl
+    ? [
+        { label: 'Нет P&L по клубам', value: 'Нельзя отделить прибыльные точки от клубов, которые съедают общий результат.', tone: 'amber' },
+        { label: 'Нет трафика', value: 'Нельзя понять, проблема в спросе, цене, конверсии или загрузке.', tone: 'blue' },
+        { label: 'Нет расшифровки УК', value: 'Нельзя понять, что можно оптимизировать, а что является обязательной нагрузкой.', tone: 'slate' },
+        { label: 'Нет ФОТ по сменам', value: 'Нельзя отличить перерасход персонала от нормальной операционной нагрузки.', tone: 'indigo' },
+      ]
+    : [
+        { label: 'Нет замеров потока', value: 'Часть причин остаётся предварительной без фактической загрузки и очередей.', tone: 'amber' },
+        { label: 'Нет разреза по этапам', value: 'Нельзя точно отделить главное ограничение от симптомов вокруг него.', tone: 'blue' },
+        { label: 'Нет данных по команде', value: 'Нельзя понять, проблема в мощности, правилах или распределении работы.', tone: 'slate' },
+        { label: 'Решения ограничены', value: 'Нельзя безопасно менять весь процесс одним движением.', tone: 'indigo' },
+      ]
+
+  return (
+    <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
+      <div className="mb-3 flex items-center gap-2">
+        <Info className="h-4.5 w-4.5" style={{ color: PRIMARY_BLUE }} />
+        <div>
+          <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
+            Что важно знать перед чтением
+          </h2>
+          {isPnl && (
+            <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+              Отчёт построен по сводному P&L. Он показывает, что сеть убыточна и где основные зоны давления, но не отвечает на главный управленческий вопрос: вся сеть работает плохо или несколько клубов тянут результат вниз.
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
+              {item.label}
+            </p>
+            <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -1213,6 +1461,166 @@ function MiniTrend({ labels, revenue, profit, accent }: { labels: string[]; reve
         <span>{labels[0] ?? 'Старт периода'}</span>
         <span>{labels.at(-1) ?? 'Последний месяц'}</span>
       </div>
+    </div>
+  )
+}
+
+function InteractiveTrendChart({
+  labels,
+  revenue,
+  profit,
+}: {
+  labels: string[]
+  revenue: number[]
+  profit: number[]
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => setReducedMotion(media.matches)
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [])
+
+  if (revenue.length < 2 || profit.length < 2 || labels.length !== revenue.length || profit.length !== revenue.length) {
+    return <p className="text-sm leading-relaxed" style={{ color: TEXT2 }}>Недостаточно данных для графика.</p>
+  }
+
+  const width = 760
+  const height = 320
+  const padding = { top: 20, right: 20, bottom: 38, left: 56 }
+  const plotWidth = width - padding.left - padding.right
+  const plotHeight = height - padding.top - padding.bottom
+  const values = [...revenue, ...profit]
+  const minValue = Math.min(0, ...values)
+  const maxValue = Math.max(...values)
+  const range = maxValue - minValue || 1
+
+  const toPoint = (value: number, index: number) => ({
+    x: padding.left + (index / (labels.length - 1)) * plotWidth,
+    y: padding.top + plotHeight - ((value - minValue) / range) * plotHeight,
+  })
+
+  const revenuePoints = revenue.map(toPoint)
+  const profitPoints = profit.map(toPoint)
+  const linePath = (points: { x: number; y: number }[]) =>
+    points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ')
+
+  const bestValue = Math.max(...profit)
+  const worstValue = Math.min(...profit)
+  const bestIndex = profit.indexOf(bestValue)
+  const worstIndex = profit.indexOf(worstValue)
+  const hoverIndex = activeIndex ?? bestIndex
+  const hoverRevenue = revenue[hoverIndex]
+  const hoverProfit = profit[hoverIndex]
+  const hoverMargin = hoverRevenue !== 0 ? (hoverProfit / hoverRevenue) * 100 : null
+  const tooltipPoint = profitPoints[hoverIndex]
+  const yTicks = Array.from({ length: 5 }, (_, index) => minValue + (range / 4) * index).reverse()
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full overflow-visible" role="img" aria-label="Динамика выручки и прибыли по месяцам">
+          {yTicks.map((tick) => {
+            const y = padding.top + plotHeight - ((tick - minValue) / range) * plotHeight
+            return (
+              <g key={tick}>
+                <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#E2E8F0" strokeDasharray="4 6" />
+                <text x={padding.left - 10} y={y + 4} textAnchor="end" fontSize="11" fill={TEXT3}>
+                  {`${Math.round(tick / 1_000_000)} млн`}
+                </text>
+              </g>
+            )
+          })}
+
+          <line x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} stroke={BORDER} />
+          <line x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} stroke={BORDER} />
+
+          <path
+            d={linePath(revenuePoints)}
+            fill="none"
+            stroke={PRIMARY_BLUE}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={!reducedMotion ? { strokeDasharray: 1200, strokeDashoffset: 0, animation: 'drawLine 900ms ease-out' } : undefined}
+          />
+          <path
+            d={linePath(profitPoints)}
+            fill="none"
+            stroke="#F97316"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={!reducedMotion ? { strokeDasharray: 1200, strokeDashoffset: 0, animation: 'drawLine 1100ms ease-out' } : undefined}
+          />
+
+          {labels.map((label, index) => {
+            const revenuePoint = revenuePoints[index]
+            const profitPoint = profitPoints[index]
+            const isBest = index === bestIndex
+            const isWorst = index === worstIndex
+            const isActive = index === hoverIndex
+
+            return (
+              <g key={label}>
+                <rect
+                  x={revenuePoint.x - plotWidth / (labels.length * 2)}
+                  y={padding.top}
+                  width={plotWidth / labels.length}
+                  height={plotHeight}
+                  fill="transparent"
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onFocus={() => setActiveIndex(index)}
+                />
+                <circle cx={revenuePoint.x} cy={revenuePoint.y} r={isActive ? 5 : 3.5} fill={PRIMARY_BLUE} opacity={0.95} />
+                <circle
+                  cx={profitPoint.x}
+                  cy={profitPoint.y}
+                  r={isActive ? 6 : 4}
+                  fill={isBest ? '#10B981' : isWorst ? '#EF4444' : '#F97316'}
+                  opacity={0.95}
+                />
+                {(index === 0 || index === labels.length - 1 || index === bestIndex || index === worstIndex || index % 3 === 0) && (
+                  <text x={profitPoint.x} y={height - 14} textAnchor="middle" fontSize="11" fill={TEXT3}>
+                    {label}
+                  </text>
+                )}
+              </g>
+            )
+          })}
+
+          {tooltipPoint && (
+            <g transform={`translate(${Math.min(tooltipPoint.x + 12, width - 205)}, ${Math.max(tooltipPoint.y - 78, padding.top + 6)})`}>
+              <rect width="190" height="70" rx="14" fill="#FFFFFF" stroke={BORDER} />
+              <text x="12" y="20" fontSize="12" fontWeight="700" fill={TEXT}>{labels[hoverIndex]}</text>
+              <text x="12" y="38" fontSize="12" fill={PRIMARY_BLUE}>{`Выручка: ${formatCurrency(hoverRevenue, true)}`}</text>
+              <text x="12" y="54" fontSize="12" fill="#EA580C">{`Прибыль: ${formatCurrency(hoverProfit, true)}`}</text>
+              <text x="122" y="54" fontSize="12" fill={TEXT2}>{hoverMargin !== null ? `Маржа: ${formatPercent(hoverMargin)}` : 'Маржа: —'}</text>
+            </g>
+          )}
+        </svg>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <MetricChip label="Лучший месяц" value={`${labels[bestIndex]} / ${formatCurrency(bestValue, true)}`} tone="green" />
+        <MetricChip label="Худший месяц" value={`${labels[worstIndex]} / ${formatCurrency(worstValue, true)}`} tone="red" />
+        <MetricChip label="Период" value={`${labels[0]} — ${labels.at(-1)}`} tone="slate" />
+      </div>
+
+      <style jsx>{`
+        @keyframes drawLine {
+          from {
+            stroke-dashoffset: 1200;
+          }
+          to {
+            stroke-dashoffset: 0;
+          }
+        }
+      `}</style>
     </div>
   )
 }
@@ -1276,6 +1684,21 @@ function CardPreview({
   accent: string
 }) {
   if (agentType === 'pnl' && pnlFacts) {
+    if (card.id === 'trend-anomalies') {
+      return <MiniTrend labels={pnlFacts.monthLabels} revenue={pnlFacts.revenueSeries} profit={pnlFacts.profitSeries} accent={accent} />
+    }
+    if (card.id === 'profit-drag') {
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
+            <MetricChip label="База" value={`${formatCurrency(pnlFacts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.amount ?? 0), 0), true)}/мес`} tone="red" />
+            <MetricChip label="Разрыв" value={formatCurrency(pnlFacts.gapToBreakeven, true)} tone="amber" />
+            <MetricChip label="Порог" value={formatCurrency(pnlFacts.breakevenRevenue, true)} tone="slate" />
+          </div>
+          <ExpensePreview items={pnlFacts.expenseBreakdown.slice(0, 4)} />
+        </div>
+      )
+    }
     switch (card.id) {
       case 'diagnosis':
         return (
@@ -1391,14 +1814,29 @@ function BulletPreview({ items }: { items: string[] }) {
 
 function ScenarioPlanPanel({ facts }: { facts: PnlFacts }) {
   const scenarios = [
-    { title: 'Рост выручки', effect: facts.scenarios[0] ?? 'Поднять среднюю выручку выше точки безубыточности.', risk: 'Риск: без контроля расходов эффект быстро растворяется.', horizon: 'Срок: 30 дней+' },
-    { title: 'Снижение аренды и УК', effect: facts.scenarios[1] ?? 'Срезать постоянную базу и уменьшить порог безубыточности.', risk: 'Риск: требует переговоров и детализации по клубам.', horizon: 'Срок: 14–30 дней' },
-    { title: 'Комбо-сценарий', effect: facts.scenarios[2] ?? 'Соединить рост выручки и адресное снижение базы.', risk: 'Риск: сложнее в исполнении, но даёт лучший шанс на маржу.', horizon: 'Срок: 30 дней+' },
+    {
+      title: 'Рост выручки',
+      effect: facts.scenarios[0] ?? 'Запускать только там, где есть подтверждённая загрузка и понятная маржа после роста.',
+      risk: 'Риск: оборот вырастет вместе с ФОТ, УК, продуктами и нагрузкой, а маржа останется слабой.',
+      horizon: '30 дней+',
+    },
+    {
+      title: 'Снижение базы',
+      effect: facts.scenarios[1] ?? 'Начинать с УК, аренды и ФОТ по клубам, а не с одинакового урезания всей сети.',
+      risk: 'Риск: грубое сокращение ударит по сервису и сильным клубам, но не решит проблему слабых точек.',
+      horizon: '14–30 дней',
+    },
+    {
+      title: 'Комбо-сценарий',
+      effect: facts.scenarios[2] ?? 'Самый рабочий путь: чуть поднять выручку в точках с потенциалом и снять базу там, где она не оправдана.',
+      risk: 'Риск: требует дисциплины и клубного разреза, но даёт лучший шанс выйти не только в ноль, а в нормальную маржу.',
+      horizon: '30 дней+',
+    },
   ]
   const plan = [
-    { window: '7 дней', action: facts.actions[0] ?? 'Расшифровать расходы на УК.' },
-    { window: '14 дней', action: facts.actions[1] ?? 'Собрать P&L по клубам и пересчитать аренду.' },
-    { window: '30 дней', action: facts.actions[2] ?? 'Собрать dashboard по клубам и план на сезон.' },
+    { window: '7 дней', action: facts.actions[0] ?? 'Собрать P&L по клубам, расшифровку УК, аренду и ФОТ по каждой точке. Это не “анализ ради анализа”, а карта, где именно течёт маржа.' },
+    { window: '14 дней', action: facts.actions[1] ?? 'Разделить клубы на доноров, нейтральные точки и пожирателей маржи. Для каждой группы определить отдельные решения, а не общий режим сокращений.' },
+    { window: '30 дней', action: facts.actions[2] ?? 'Закрепить регулярный dashboard по клубам и сезонный сценарий: где масштабировать спрос, где пересобирать базу, где готовить переговоры или жёсткий форматный сценарий.' },
   ]
 
   return (
@@ -1409,9 +1847,9 @@ function ScenarioPlanPanel({ facts }: { facts: PnlFacts }) {
           {scenarios.map((scenario) => (
             <div key={scenario.title} className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
               <p className="text-sm font-semibold" style={{ color: TEXT }}>{scenario.title}</p>
-              <p className="mt-2 text-sm leading-snug" style={{ color: '#334155' }}>{trimSentence(scenario.effect, 96)}</p>
-              <p className="mt-2 text-[11px] leading-snug" style={{ color: TEXT2 }}>{scenario.risk}</p>
-              <p className="mt-2 text-[11px] font-semibold" style={{ color: INDIGO }}>{scenario.horizon}</p>
+              <p className="mt-2 text-sm leading-relaxed" style={{ color: '#334155' }}>{scenario.effect}</p>
+              <p className="mt-2 text-xs leading-relaxed" style={{ color: TEXT2 }}>{scenario.risk}</p>
+              <p className="mt-2 text-[11px] font-semibold" style={{ color: INDIGO }}>Срок: {scenario.horizon}</p>
             </div>
           ))}
         </div>
@@ -1435,9 +1873,17 @@ function ScenarioPlanPanel({ facts }: { facts: PnlFacts }) {
 }
 
 function LimitationsPanel({ sourceWarning }: { sourceWarning?: string }) {
-  const exact = ['Выручка, расходы, прибыль и сезонность по сводному P&L.']
-  const missing = ['P&L по клубам.', 'Посещаемость и трафик.', 'Детализация расходов на УК.']
-  const next = ['Загрузить P&L по клубам.', 'Добавить трафик и посещаемость.', 'Расшифровать УК и полуфиксированные расходы.']
+  const exact = ['Сводный P&L достаточно хорошо показывает сам факт убытка, динамику выручки, среднюю расходную базу и месяцы, где прибыль появляется или исчезает. Этого достаточно для диагноза “проблема есть”.']
+  const missing = [
+    'Без P&L по клубам нельзя понять, вся сеть убыточна или несколько точек маскируются внутри сводного результата. Это меняет решение: менять модель всей сети или чинить конкретные клубы.',
+    'Без трафика и посещаемости нельзя отличить проблему спроса от проблемы цены, конверсии, загрузки или графика персонала. Один и тот же убыток может иметь разные причины.',
+    'Без расшифровки УК и ФОТ по сменам нельзя безопасно резать расходы: можно ухудшить сервис и не попасть в статью, которая реально держит бизнес ниже порога.',
+  ]
+  const next = [
+    sourceWarning,
+    'P&L по каждому клубу с выручкой, арендой, ФОТ, УК и прибылью.',
+    'Трафик, посещаемость, загрузка смен и расшифровка УК по статьям.',
+  ].filter(Boolean) as string[]
 
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -1446,12 +1892,12 @@ function LimitationsPanel({ sourceWarning }: { sourceWarning?: string }) {
         <div className="mt-2"><BulletPreview items={exact} /></div>
       </div>
       <div className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Чего не хватает</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения опасны</p>
         <div className="mt-2"><BulletPreview items={missing} /></div>
       </div>
       <div className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что загрузить в следующий раз</p>
-        <div className="mt-2"><BulletPreview items={sourceWarning ? [sourceWarning, ...next].slice(0, 3) : next} /></div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для решения</p>
+        <div className="mt-2"><BulletPreview items={next.slice(0, 3)} /></div>
       </div>
     </div>
   )
@@ -1603,6 +2049,21 @@ function DetailVisual({
   accent: string
 }) {
   if (agentType === 'pnl' && pnlFacts) {
+    if (card.id === 'trend-anomalies') {
+      return <InteractiveTrendChart labels={pnlFacts.monthLabels} revenue={pnlFacts.revenueSeries} profit={pnlFacts.profitSeries} />
+    }
+    if (card.id === 'profit-drag') {
+      return (
+        <div className="space-y-4 rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricChip label="База" value={`${formatCurrency(pnlFacts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.amount ?? 0), 0), true)}/мес`} tone="red" />
+            <MetricChip label="Разрыв" value={formatCurrency(pnlFacts.gapToBreakeven, true)} tone="amber" />
+            <MetricChip label="Порог" value={formatCurrency(pnlFacts.breakevenRevenue, true)} tone="slate" />
+          </div>
+          <ExpensePreview items={pnlFacts.expenseBreakdown.slice(0, 4)} />
+        </div>
+      )
+    }
     if (card.id === 'diagnosis') {
       return (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1721,7 +2182,12 @@ function DetailDrawer({
     <ModalShell open={open} title={card.detailTitle} onClose={onClose}>
         <div className="space-y-4">
           <div className="flex items-start gap-3">
-            <IconBadge icon={card.icon} tone={card.tone} />
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border"
+              style={{ borderColor: BORDER, background: '#F8FAFC', color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
+            >
+              <card.icon className="h-4 w-4" />
+            </div>
             <div>
             <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
             <p className="mt-2.5 text-lg font-semibold leading-snug" style={{ color: TEXT }}>{card.detailLead}</p>
@@ -1816,7 +2282,8 @@ function makeMarkdownComponents() {
   }
 }
 
-function SourceTableBlock({
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _SourceTableBlock({
   source,
   expanded,
   onToggleExpanded,
@@ -1902,6 +2369,111 @@ function SourceTableBlock({
   )
 }
 
+function SourceTableBlockV2({
+  source,
+  expanded,
+  onToggleExpanded,
+}: {
+  source: ParsedSource | null
+  expanded: boolean
+  onToggleExpanded: () => void
+}) {
+  if (!source || source.rows.length === 0) return null
+
+  const currencySymbol = detectCurrencySymbol(source)
+  const tableRows = source.rows.filter((row) => row.length > 1 && row.some((cell) => cell.trim()))
+  if (tableRows.length === 0) return null
+
+  const visibleRows = expanded ? tableRows : tableRows.slice(0, 12)
+  const hasMore = tableRows.length > visibleRows.length
+  const warnings = source.metadata['Предупреждения']
+  const score = source.metadata['Quality score']
+  const fileName = source.metadata['Источник'] ?? source.metadata.Source ?? 'Источник не записан'
+  const sheetName = source.metadata['Лист'] ?? source.metadata.Sheet ?? 'Не указан'
+  const rowCount = source.metadata['Строк'] ?? source.metadata.Rows ?? String(tableRows.length)
+  const columnCount = source.metadata['Колонок'] ?? source.metadata.Columns ?? String(tableRows[0]?.length ?? 0)
+
+  return (
+    <section className="mt-4 overflow-hidden rounded-3xl border" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
+      <div className="border-b px-4 py-3 sm:px-5" style={{ borderColor: BORDER_SOFT }}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-3xl">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
+              Проверка исходных данных
+            </p>
+            <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>
+              Данные, использованные для анализа
+            </h2>
+            <p className="mt-1 text-sm leading-snug" style={{ color: TEXT2 }}>
+              Это исходные строки, на которых построены расчёты. Проверьте, что выбран правильный лист и нужные периоды.
+            </p>
+          </div>
+          {score && <StatusPill tone="blue">Оценка качества: {score}</StatusPill>}
+        </div>
+      </div>
+
+      <div className="space-y-3 px-4 py-3.5 sm:px-5">
+        <div className="grid gap-2 text-xs sm:grid-cols-4">
+          {[
+            ['Файл', fileName],
+            ['Лист', sheetName],
+            ['Строки', rowCount],
+            ['Колонки', columnCount],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+              <p className="font-semibold" style={{ color: TEXT3 }}>{label}</p>
+              <p className="mt-1 font-medium" style={{ color: TEXT }}>{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {warnings && warnings.toLowerCase() !== 'нет' && (
+          <div className="rounded-2xl border px-3 py-2 text-xs" style={{ background: '#FFFBEB', borderColor: '#FDE68A', color: '#92400E' }}>
+            {warnings}
+          </div>
+        )}
+
+        <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
+          <table className="min-w-[960px] w-full border-collapse text-xs">
+            <tbody>
+              {visibleRows.map((row, rowIndex) => (
+                <tr key={rowIndex} className={rowIndex === 0 ? 'bg-slate-50 font-semibold' : undefined}>
+                  {row.slice(0, 16).map((cell, cellIndex) => {
+                    const label = row[0] ?? ''
+                    const formatted = cellIndex === 0 || rowIndex === 0 ? (cell.trim() || '—') : formatSourceCell(label, cell, currencySymbol)
+                    const numeric = cellIndex > 0 && looksNumericCell(cell) && !isPercentLabel(label)
+                    return (
+                      <td
+                        key={`${rowIndex}-${cellIndex}`}
+                        className={`${cellIndex === 0 ? 'sticky left-0 z-10 min-w-[220px] max-w-[280px]' : 'min-w-[110px]'} border-b border-r px-3 py-2 align-top ${numeric ? 'text-right font-medium tabular-nums' : ''}`}
+                        style={{
+                          borderColor: BORDER_SOFT,
+                          color: TEXT,
+                          background: cellIndex === 0 ? (rowIndex === 0 ? '#F8FAFC' : CARD) : undefined,
+                        }}
+                      >
+                        <span className={cellIndex === 0 ? 'block whitespace-normal break-words' : 'block whitespace-nowrap'}>
+                          {formatted}
+                        </span>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {(hasMore || expanded) && (
+          <button type="button" onClick={onToggleExpanded} className="rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT }}>
+            {expanded ? 'Скрыть таблицу' : `Показать таблицу (${tableRows.length} строк)`}
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function FullReportBlock({ report }: { report: string }) {
   const components = makeMarkdownComponents()
   return (
@@ -1934,7 +2506,7 @@ export default function ReportDisplay({
   const pnlFacts = useMemo(() => (data.agentType === 'pnl' ? buildPnlFacts(data.report, source, sections) : null), [data.agentType, data.report, sections, source])
   const goldrattFacts = useMemo(() => (data.agentType === 'goldratt' ? buildGoldrattFacts(data.report, sections) : null), [data.agentType, data.report, sections])
   const cards = useMemo(
-    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlCards(pnlFacts, source) : buildGoldrattCards(goldrattFacts!)),
+    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlDashboardCardsV2(pnlFacts, source) : buildGoldrattCards(goldrattFacts!)),
     [data.agentType, goldrattFacts, pnlFacts, source],
   )
 
@@ -1942,7 +2514,6 @@ export default function ReportDisplay({
   const [copiedLink, setCopiedLink] = useState(false)
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [showFullReport, setShowFullReport] = useState(false)
-  const [showSource, setShowSource] = useState(false)
   const [sourceExpanded, setSourceExpanded] = useState(false)
 
   const modelLabel = isDemo ? 'Демо-отчёт' : data.modelUsed || 'Модель не записана'
@@ -1973,16 +2544,13 @@ export default function ReportDisplay({
       />
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 print:px-0 print:py-4">
-        <IntroBlock agentType={data.agentType} />
+        <IntroBlockV2 agentType={data.agentType} />
 
         <ChipNav
           cards={cards}
           onOpenCard={setOpenCardId}
           showFullReport={showFullReport}
           onToggleFullReport={() => setShowFullReport((value) => !value)}
-          showSource={showSource}
-          onToggleSource={() => setShowSource((value) => !value)}
-          hasSource={Boolean(source) && data.agentType === 'pnl'}
         />
 
         <DashboardCards
@@ -1994,9 +2562,9 @@ export default function ReportDisplay({
           onOpen={setOpenCardId}
         />
 
-        {data.agentType === 'pnl' && showSource && (
+        {data.agentType === 'pnl' && source && (
           <div className="mt-4">
-            <SourceTableBlock source={source} expanded={sourceExpanded} onToggleExpanded={() => setSourceExpanded((value) => !value)} />
+            <SourceTableBlockV2 source={source} expanded={sourceExpanded} onToggleExpanded={() => setSourceExpanded((value) => !value)} />
           </div>
         )}
 
@@ -2031,3 +2599,4 @@ export default function ReportDisplay({
     </div>
   )
 }
+

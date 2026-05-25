@@ -201,7 +201,7 @@ CREATE TABLE reports (
 / → выбор агента → /analyze?agent=pnl|goldratt
   → POST /api/analyze  { ...formData, agentType }
       ├── выбор system prompt по agentType
-      ├── AI генерирует отчёт (OpenRouter)
+      ├── AI генерирует отчёт (Claude или OpenRouter — зависит от AI_PROVIDER)
       └── Supabase: сохранение с agent_type → { id }
   → /report/[id]  (header/badge/цвет по agentType)
 ```
@@ -218,7 +218,7 @@ CREATE TABLE reports (
 src/
 ├── app/
 │   ├── page.tsx                    # Landing page (оба агента)
-│   ├── layout.tsx                  # Root layout (dark theme)
+│   ├── layout.tsx                  # Root layout
 │   ├── globals.css                 # Стили темы + markdown стили
 │   ├── analyze/
 │   │   ├── page.tsx                # Server Component: читает ?agent= param
@@ -233,12 +233,12 @@ src/
 │   ├── ai/
 │   │   ├── provider.ts             # Интерфейс AIProvider + AIResponse
 │   │   ├── openrouter.ts           # Реализация OpenRouter (возвращает modelUsed)
+│   │   ├── claude.ts               # Реализация Claude / Anthropic
 │   │   ├── index.ts                # Фабрика createAIProvider()
 │   │   └── prompts/
 │   │       ├── pnlPrompt.ts        # System prompt для P&L Agent
 │   │       ├── goldrattPrompt.ts   # System prompt для Goldratt Agent
 │   │       └── buildUserPrompt.ts  # User prompt builders по agentType
-│   │   └── index.ts                # Фабрика createAIProvider()
 │   ├── supabase/
 │   │   └── server.ts               # Supabase server-only client
 │   ├── repositories/
@@ -246,7 +246,6 @@ src/
 │   ├── storage/
 │   │   ├── formStorage.ts          # Черновик формы (localStorage)
 │   │   └── reportStorage.ts        # Отчёт из localStorage (fallback)
-│   ├── prompts.ts                  # System prompt
 │   └── types.ts                    # Все общие типы
 └── components/ui/                  # shadcn/ui компоненты
 ```
@@ -280,7 +279,7 @@ export interface AIProvider {
 - **Next.js 16** App Router + TypeScript
 - **Tailwind CSS v4** + shadcn/ui + lucide-react
 - **react-markdown** + remark-gfm
-- **OpenRouter** — прокси к бесплатным AI моделям
+- **Claude / Anthropic** или **OpenRouter** — AI-провайдер через общий provider layer
 - **Supabase** — PostgreSQL база данных для хранения отчётов
 
 ## Обработка ошибок
@@ -294,7 +293,7 @@ API всегда возвращает предсказуемую структу�
 
 **Error:**
 ```json
-{ "error": "safe user-facing message", "code": "ERROR_CODE" }
+{ "error": "safe user-facing message", "code": "ERROR_CODE", "requestId": "uuid" }
 ```
 
 **Коды ошибок:** `VALIDATION_ERROR` · `RATE_LIMITED` · `NOT_CONFIGURED` · `AI_TIMEOUT` · `AI_RATE_LIMITED` · `AI_PROVIDER_ERROR` · `AI_EMPTY_RESPONSE` · `DB_SAVE_FAILED` · `INTERNAL_ERROR`
@@ -302,7 +301,7 @@ API всегда возвращает предсказуемую структу�
 **Особый случай — `DB_SAVE_FAILED`:** AI сгенерировал отчёт, но Supabase не сохранил.
 API возвращает:
 ```json
-{ "error": "...", "code": "DB_SAVE_FAILED", "report": "...markdown...", "company": "..." }
+{ "error": "...", "code": "DB_SAVE_FAILED", "report": "...markdown...", "company": "...", "requestId": "uuid" }
 ```
 Клиент сохраняет отчёт в localStorage и показывает жёлтое предупреждение с кнопкой «Открыть временный отчёт».
 
@@ -367,7 +366,7 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 
 AI-запросы могут быть долгими. Для production лучше заменить in-memory limiter на Redis/Upstash/Vercel KV, а генерацию отчётов вынести в queue/background jobs. Также проверьте, что выбранный тариф/настройка Vercel выдерживает long-running AI requests.
 
-### OpenRouter Free Router
+### OpenRouter routing
 
 - Primary model по умолчанию: `google/gemma-4-31b-it:free` (задаётся через `OPENROUTER_MODEL`)
 - Если primary не ответил, provider пробует fallback: `openai/gpt-oss-120b:free`, `nvidia/nemotron-3-super-120b-a12b:free`

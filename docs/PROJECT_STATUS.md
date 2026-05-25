@@ -6,7 +6,7 @@
 - Landing page (`/`) — показывает оба агента с описанием и CTA-кнопками
 - Страница `/analyze` с выбором агента (Server Component + Client)
 - API route (`POST /api/analyze`) — маршрутизирует по `agentType`
-- OpenRouter client с primary model `google/gemma-4-31b-it:free` и explicit fallback-моделями
+- AI provider layer: OpenRouter по умолчанию, Claude подключается через `AI_PROVIDER=claude`
 - Supabase server-side хранение отчётов — каждый отчёт получает UUID
 - Страница `/report/[id]` — Server Component + Client UI с агент-специфичным header/badge
 - Fallback страница `/report` — localStorage для старых сессий
@@ -31,10 +31,10 @@
 ### Два AI-агента
 
 **P&L Agent** (`agentType: 'pnl'`)
-- Фокус: финансовый анализ P&L, расходы, рентабельность, bottleneck
+- Фокус: финансовый анализ P&L, расходы, рентабельность, главное ограничение прибыли
 - System prompt: `src/lib/ai/prompts/pnlPrompt.ts`
 - User prompt builder: `buildPnlUserPrompt`
-- Структура отчёта: 14 разделов (Executive Summary → Ограничения анализа)
+- Структура отчёта: 14 разделов (`Краткий итог` → `Ограничения анализа`)
 - Цветовая схема: emerald/teal
 - URL: `/analyze?agent=pnl`
 
@@ -89,7 +89,7 @@ error_message TEXT
 / → выбор агента → /analyze?agent=pnl|goldratt
 → POST /api/analyze (с agentType)
     ├── выбор system prompt по agentType
-    ├── AI генерирует отчёт (OpenRouter)
+    ├── AI генерирует отчёт (Claude или OpenRouter — зависит от `AI_PROVIDER`)
     └── Supabase: сохранение с agent_type → { id }
 → /report/[id] (header/badge по agentType)
 ```
@@ -146,8 +146,7 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 
 ## Известные ограничения
 
-- OpenRouter Free Router (`openrouter/free`) нестабилен: задержки 1–3 минуты, ошибки 429 и возможная смена реальной underlying model
-- Нет production-ready AI provider
+- Free-модели OpenRouter нестабильны: задержки 1–3 минуты, ошибки 429 и возможная смена реальной underlying model
 - Нет RLS — все отчёты доступны по UUID без авторизации
 - Нет rate limiting
 
@@ -166,7 +165,7 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 |----------|-----------|
 | Нет `OPENROUTER_API_KEY` | API возвращает `NOT_CONFIGURED` |
 | Нет Supabase env vars | `getReportById` → `null`; `saveReportToDatabase` → бросает, API возвращает `DB_SAVE_FAILED` |
-| AI вернул ошибку | `AI_ERROR`; форма остаётся с данными |
+| AI вернул ошибку | `AI_TIMEOUT` / `AI_RATE_LIMITED` / `AI_PROVIDER_ERROR`; форма остаётся с данными |
 | Supabase save упал (AI OK) | `DB_SAVE_FAILED` + `report`; клиент сохраняет в localStorage; жёлтое предупреждение |
 | `/report/[id]` с некорректным UUID | UUID regex guard — DB не трогается; показывается NotFound |
 | `/report/[id]` — отчёт не найден | Empty state «Отчёт не найден» + кнопка |
@@ -176,8 +175,7 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 ## Техдолг
 
 - Нет тестов (unit / integration)
-- Нет логирования запросов (только console.error)
-- Нет мониторинга ошибок (Sentry / etc)
+- Нет внешнего мониторинга ошибок (Sentry / etc)
 - Goldratt-специфичные поля не хранятся отдельно в DB (только в report)
 
 ## P1 fixes applied
@@ -211,7 +209,7 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 - In-memory rate limit не общий между serverless instances. Для публичного production заменить на Redis/Upstash/Vercel KV.
 - AI generation может занимать долгое время. Для production лучше добавить queue/background jobs и проверить лимиты Vercel plan.
 - Free OpenRouter models остаются нестабильным местом. Архитектура готова к отдельному Claude/OpenAI provider через текущий `AIProvider` interface.
-- Текущая временная рекомендуемая модель для MVP/demo: `OPENROUTER_MODEL=openrouter/free`. Router сам выбирает доступную бесплатную модель.
+- Если нужен стабильный handoff для другого разработчика, рекомендуется `AI_PROVIDER=claude`. OpenRouter остаётся fallback-вариантом для локальной проверки и demo без Claude key.
 - Для production нужен Claude/OpenAI или платная OpenRouter model вместо free router.
 
 ## Current env example
