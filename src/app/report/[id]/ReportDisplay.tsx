@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -234,6 +234,14 @@ function formatCurrency(value: number | null, compact = false): string {
 function formatPercent(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return 'См. отчёт'
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+}
+
+function formatMarginDisplay(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'Маржа: —'
+  const sign = value < 0 ? '−' : ''
+  const abs = Math.abs(value)
+  const formatted = abs >= 10 ? Math.round(abs).toString() : abs.toFixed(1)
+  return `Маржа: ${sign}${formatted}%`
 }
 
 function formatNumber(value: number | null): string {
@@ -1111,8 +1119,8 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
       kicker: 'Первый шаг',
       tone: 'indigo',
       icon: CheckCircle2,
-      value: 'Первое действие: расшифровать УК',
-      support: 'Срок: 7 дней. Потом P&L по клубам и решения по базе.',
+      value: 'Необходимое действие: расшифровать расходы УК',
+      support: 'Первый шаг перед решениями по расходам и клубам',
       statusLabel: 'Первый шаг',
       detailTitle: 'Сценарии и план действий',
       detailLead: 'Первый шаг — не "продать больше", а понять, где именно течёт маржа и какие точки создают убыток.',
@@ -1241,7 +1249,8 @@ function Header({
         </div>
       </nav>
 
-      <header className="mb-4 overflow-hidden rounded-3xl border print:border-none" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 12px 32px rgba(15, 23, 42, 0.07)' }}>
+      <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 print:px-0">
+      <header className="mb-0 overflow-hidden rounded-3xl border print:border-none" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 12px 32px rgba(15, 23, 42, 0.07)' }}>
         <div className="p-4 sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
@@ -1302,6 +1311,7 @@ function Header({
           </div>
         </div>
       </header>
+      </div>
     </>
   )
 }
@@ -1350,13 +1360,9 @@ function _IntroBlock({ agentType }: { agentType: ReportPageData['agentType'] }) 
 function ChipNav({
   cards,
   onOpenCard,
-  showFullReport,
-  onToggleFullReport,
 }: {
   cards: DetailCard[]
   onOpenCard: (id: string) => void
-  showFullReport: boolean
-  onToggleFullReport: () => void
 }) {
   return (
     <div className="mb-4 flex flex-wrap gap-2 print:hidden">
@@ -1371,9 +1377,6 @@ function ChipNav({
           {String(index + 1).padStart(2, '0')} {card.title}
         </button>
       ))}
-      <button type="button" onClick={onToggleFullReport} className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
-        {showFullReport ? 'Скрыть технические детали' : 'Показать полный текстовый отчёт'}
-      </button>
     </div>
   )
 }
@@ -1426,6 +1429,16 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
 }
 
 function MiniTrend({ labels, revenue, profit, accent }: { labels: string[]; revenue: number[]; profit: number[]; accent: string }) {
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => setReducedMotion(media.matches)
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [])
+
   if (revenue.length < 2 || profit.length < 2) {
     return <p className="text-xs leading-relaxed" style={{ color: TEXT2 }}>Недостаточно данных для тренда.</p>
   }
@@ -1452,13 +1465,33 @@ function MiniTrend({ labels, revenue, profit, accent }: { labels: string[]; reve
         {[0, 1, 2].map((line) => (
           <line key={line} x1="0" x2={width} y1={16 + line * 24} y2={16 + line * 24} stroke="#E2E8F0" strokeDasharray="3 5" />
         ))}
-        <path d={toPath(revenue)} fill="none" stroke={accent} strokeWidth="3" strokeLinecap="round" />
-        <path d={toPath(profit)} fill="none" stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" />
+        <path
+          d={toPath(revenue)}
+          fill="none"
+          stroke={accent}
+          strokeWidth="3"
+          strokeLinecap="round"
+          style={!reducedMotion ? { strokeDasharray: 800, strokeDashoffset: 0, animation: 'miniDraw 700ms ease-out both' } : undefined}
+        />
+        <path
+          d={toPath(profit)}
+          fill="none"
+          stroke="#F59E0B"
+          strokeWidth="3"
+          strokeLinecap="round"
+          style={!reducedMotion ? { strokeDasharray: 800, strokeDashoffset: 0, animation: 'miniDraw 950ms ease-out 120ms both' } : undefined}
+        />
       </svg>
       <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: TEXT3 }}>
         <span>{labels[0] ?? 'Старт периода'}</span>
         <span>{labels.at(-1) ?? 'Последний месяц'}</span>
       </div>
+      <style jsx>{`
+        @keyframes miniDraw {
+          from { stroke-dashoffset: 800; }
+          to   { stroke-dashoffset: 0; }
+        }
+      `}</style>
     </div>
   )
 }
@@ -1592,12 +1625,12 @@ function InteractiveTrendChart({
           })}
 
           {tooltipPoint && (
-            <g transform={`translate(${Math.min(tooltipPoint.x + 12, width - 205)}, ${Math.max(tooltipPoint.y - 78, padding.top + 6)})`}>
-              <rect width="190" height="70" rx="14" fill="#FFFFFF" stroke={BORDER} />
-              <text x="12" y="20" fontSize="12" fontWeight="700" fill={TEXT}>{labels[hoverIndex]}</text>
-              <text x="12" y="38" fontSize="12" fill={PRIMARY_BLUE}>{`Выручка: ${formatCurrency(hoverRevenue, true)}`}</text>
-              <text x="12" y="54" fontSize="12" fill="#EA580C">{`Прибыль: ${formatCurrency(hoverProfit, true)}`}</text>
-              <text x="122" y="54" fontSize="12" fill={TEXT2}>{hoverMargin !== null ? `Маржа: ${formatPercent(hoverMargin)}` : 'Маржа: —'}</text>
+            <g transform={`translate(${Math.min(tooltipPoint.x + 12, width - 215)}, ${Math.max(tooltipPoint.y - 96, padding.top + 6)})`}>
+              <rect width="204" height="88" rx="14" fill="#FFFFFF" stroke={BORDER} />
+              <text x="12" y="22" fontSize="12" fontWeight="700" fill={TEXT}>{labels[hoverIndex]}</text>
+              <text x="12" y="42" fontSize="12" fill={PRIMARY_BLUE}>{`Выручка: ${formatCurrency(hoverRevenue, true)}`}</text>
+              <text x="12" y="60" fontSize="12" fill="#EA580C">{`Прибыль: ${formatCurrency(hoverProfit, true)}`}</text>
+              <text x="12" y="78" fontSize="12" fill={TEXT2}>{formatMarginDisplay(hoverMargin)}</text>
             </g>
           )}
         </svg>
@@ -1694,6 +1727,9 @@ function CardPreview({
             <MetricChip label="Порог" value={formatCurrency(pnlFacts.breakevenRevenue, true)} tone="slate" />
           </div>
           <ExpensePreview items={pnlFacts.expenseBreakdown.slice(0, 4)} />
+          <p className="text-[10px] leading-relaxed" style={{ color: TEXT3 }}>
+            % рассчитан от средней выручки — это нагрузка на оборот, а не структура на 100%.
+          </p>
         </div>
       )
     }
@@ -1739,12 +1775,7 @@ function CardPreview({
           </div>
         )
       case 'actions':
-        return (
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <MetricChip label="Первый шаг" value="Расшифровать УК" tone="indigo" />
-            <MetricChip label="Срок" value="7 дней" tone="blue" />
-          </div>
-        )
+        return null
       case 'limitations':
         return (
           <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -2058,7 +2089,10 @@ function DetailVisual({
             <MetricChip label="Разрыв" value={formatCurrency(pnlFacts.gapToBreakeven, true)} tone="amber" />
             <MetricChip label="Порог" value={formatCurrency(pnlFacts.breakevenRevenue, true)} tone="slate" />
           </div>
-          <ExpensePreview items={pnlFacts.expenseBreakdown.slice(0, 4)} />
+          <ExpensePreview items={pnlFacts.expenseBreakdown} />
+          <p className="text-[11px] leading-relaxed" style={{ color: TEXT3 }}>
+            Проценты рассчитаны от средней выручки, а не от суммы расходов. Поэтому сумма может быть больше или меньше 100% — это нагрузка на оборот, а не структура pie chart.
+          </p>
         </div>
       )
     }
@@ -2406,7 +2440,18 @@ function SourceTableBlockV2({
               Это исходные строки, на которых построены расчёты. Проверьте, что выбран правильный лист и нужные периоды.
             </p>
           </div>
-          {score && <StatusPill tone="blue">Оценка качества: {score}</StatusPill>}
+          {score && (
+            <div className="flex flex-col items-end gap-0.5">
+              <StatusPill tone="blue">Оценка качества: {score}</StatusPill>
+              <span
+                className="text-[10px]"
+                style={{ color: TEXT3 }}
+                title="Оценка показывает, насколько загруженный лист похож на P&L: есть ли выручка, расходы, прибыль/маржа, ненулевые числа, периоды и достаточный размер таблицы. Это не оценка бизнеса, а оценка пригодности данных для анализа."
+              >
+                пригодность данных для анализа
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2513,9 +2558,20 @@ export default function ReportDisplay({
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [showFullReport, setShowFullReport] = useState(false)
   const [sourceExpanded, setSourceExpanded] = useState(false)
+  const fullReportRef = useRef<HTMLDivElement>(null)
 
   const modelLabel = isDemo ? 'Демо-отчёт' : data.modelUsed || 'Модель не записана'
   const openCard = cards.find((card) => card.id === openCardId) ?? null
+
+  function toggleFullReport() {
+    const wasHidden = !showFullReport
+    setShowFullReport((v) => !v)
+    if (wasHidden) {
+      setTimeout(() => {
+        fullReportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 60)
+    }
+  }
 
   async function handleCopyReport() {
     await navigator.clipboard.writeText(data.report)
@@ -2547,8 +2603,6 @@ export default function ReportDisplay({
         <ChipNav
           cards={cards}
           onOpenCard={setOpenCardId}
-          showFullReport={showFullReport}
-          onToggleFullReport={() => setShowFullReport((value) => !value)}
         />
 
         <DashboardCards
@@ -2566,11 +2620,25 @@ export default function ReportDisplay({
           </div>
         )}
 
-        {showFullReport && (
-          <div className="mt-4">
-            <FullReportBlock report={data.report} />
+        {/* Полный текстовый отчёт — всегда внизу, кнопка рядом с контентом */}
+        <div ref={fullReportRef} className="mt-6 scroll-mt-6">
+          <div className="flex justify-center print:hidden">
+            <button
+              type="button"
+              onClick={toggleFullReport}
+              className="inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-slate-50"
+              style={{ borderColor: BORDER, color: TEXT2, background: '#FFFFFF' }}
+            >
+              {showFullReport ? <X className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+              {showFullReport ? 'Скрыть полный текстовый отчёт' : 'Показать полный текстовый отчёт'}
+            </button>
           </div>
-        )}
+          {showFullReport && (
+            <div className="mt-4">
+              <FullReportBlock report={data.report} />
+            </div>
+          )}
+        </div>
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 pb-8 print:hidden">
           <Link href="/analyze" className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
