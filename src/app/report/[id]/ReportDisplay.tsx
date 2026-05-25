@@ -139,10 +139,20 @@ interface PnlFacts {
 interface GoldrattFacts {
   diagnosis: string
   constraint: string
+  constraintTitle: string
+  flowStages: Array<{ label: string; isBottleneck: boolean; time?: string }>
+  evidenceItems: string[]
+  amplifiers: string[]
+  doNotOptimize: string[]
+  exploitActions: string[]
+  elevateActions: string[]
   actions: string[]
   scenarios: string[]
   limitations: string[]
   anomalies: string[]
+  actionPlan7: string[]
+  actionPlan14: string[]
+  actionPlan30: string[]
 }
 
 interface DetailCard {
@@ -480,6 +490,46 @@ function findRow(source: ParsedSource | null, names: string[]): string[] | null 
   )
 }
 
+function parseFlowStages(content: string): Array<{ label: string; isBottleneck: boolean; time?: string }> {
+  const stages: Array<{ label: string; isBottleneck: boolean; time?: string }> = []
+  for (const line of content.split('\n')) {
+    if (!/^\s*[-•]\s+/.test(line)) continue
+    const text = line.trim().replace(/^[-•]\s+/, '')
+    const isBottleneck = /узкое\s+место|bottleneck|горлышк/i.test(text) || /←\s*узкое/i.test(text)
+    const timeMatch = text.match(/[:：]\s*([\d.,]+\s*дн)/i)
+    const label = cleanText(text.replace(/\s*←.*$/, '').replace(/\s*[:：]\s*[\d.,]+\s*дн.*$/i, ''))
+    if (label && label.length > 2) stages.push({ label, isBottleneck, time: timeMatch?.[1] })
+  }
+  return stages.slice(0, 9)
+}
+
+function extractBulletsAfterHeading(content: string, startKeyword: string, endKeyword: string): string[] {
+  const lines = content.split('\n')
+  let capturing = false
+  const result: string[] = []
+  for (const line of lines) {
+    const lower = line.toLowerCase()
+    if (startKeyword && lower.includes(startKeyword.toLowerCase())) { capturing = true; continue }
+    if (endKeyword && capturing && lower.includes(endKeyword.toLowerCase())) break
+    if (capturing && /^\s*\d+\.\s+/.test(line)) {
+      const text = cleanText(line.replace(/^\s*\d+\.\s+/, ''))
+      if (text && text.length > 10) result.push(text)
+    }
+  }
+  return result.slice(0, 5)
+}
+
+function extractConstraintTitle(content: string): string {
+  const boldMatch = content.match(/🎯\s*\*\*([^*]+)\*\*/)
+  if (boldMatch?.[1]) {
+    const cleaned = cleanText(boldMatch[1])
+    if (cleaned.length > 10 && cleaned.length < 130) return cleaned
+  }
+  const anyBold = content.match(/\*\*([^*]{15,120})\*\*/)
+  if (anyBold?.[1]) return cleanText(anyBold[1])
+  return firstSentence(content, 'Главное ограничение определено.')
+}
+
 function parseSeries(row: string[] | null, startIndex: number): number[] {
   if (!row) return []
   return row
@@ -653,32 +703,55 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
 }
 
 function buildGoldrattFacts(report: string, sections: ReportSection[]): GoldrattFacts {
-  const overview = findSection(sections, ['overview'], ['диагноз', 'ограничение'])
-  const constraint = findSection(sections, ['constraint'], ['ограничение'])
-  const actions = findSection(sections, ['actions'], ['план', 'five focusing', 'рекомендации'])
-  const scenarios = findSection(sections, ['scenarios'], ['шум', 'не нужно'])
-  const limitations = findSection(sections, ['limitations'], ['ограничения'])
-  const anomalies = findSection(sections, ['anomalies'], ['симптом', 'шум'])
+  const findGS = (keywords: string[]) =>
+    sections.find((s) => keywords.some((k) => cleanText(s.heading).toLowerCase().includes(k.toLowerCase()))) ?? null
+
+  const constraintSection = findGS(['главное ограничение'])
+  const flowSection = findGS(['карта потока'])
+  const evidenceSection = findGS(['доказательства'])
+  const amplifiersSection = findGS(['усиливает'])
+  const donotSection = findGS(['не надо', 'не нужно оптимиз'])
+  const exploitSection = findGS(['использовать ограничение', 'как использовать'])
+  const elevateSection = findGS(['расширить ограничение', 'как расширить'])
+  const actionsSection = findGS(['план действий'])
+  const limitationsSection = findGS(['ограничения анализа'])
+
+  const constraintContent = constraintSection?.content ?? ''
+  const actionsContent = actionsSection?.content ?? ''
+
+  const flowStages = parseFlowStages(flowSection?.content ?? '')
+  const evidenceItems = uniqueBullets(extractBullets(evidenceSection?.content ?? '', 7), 7)
+  const amplifiers = uniqueBullets(extractBullets(amplifiersSection?.content ?? '', 7), 7)
+  const doNotOptimize = uniqueBullets([
+    ...extractTableRows(donotSection?.content ?? '').map((row) => row[0] ?? '').filter(Boolean),
+    ...extractBullets(donotSection?.content ?? '', 6),
+  ], 6)
+  const exploitActions = uniqueBullets(extractBullets(exploitSection?.content ?? '', 7), 7)
+  const elevateActions = uniqueBullets(extractBullets(elevateSection?.content ?? '', 6), 6)
+  const actionPlan7 = extractBulletsAfterHeading(actionsContent, '7 дней', '14 дней')
+  const actionPlan14 = extractBulletsAfterHeading(actionsContent, '14 дней', '30 дней')
+  const actionPlan30 = extractBulletsAfterHeading(actionsContent, '30 дней', '')
+  const constraintTitle = extractConstraintTitle(constraintContent)
+  const diagnosis = firstSentence(constraintContent, 'Система упирается в одно управленческое ограничение.')
+  const constraint = ruSanitize(firstSentence(constraintContent, 'Главное ограничение определено.'))
 
   return {
-    diagnosis: firstSentence(overview?.content ?? report, 'Система упирается в одно управленческое ограничение.'),
-    constraint: firstSentence(constraint?.content ?? report, 'Главное ограничение определяется по описанию процесса.'),
-    actions: uniqueBullets(
-      [
-        ...extractBullets(actions?.content ?? '', 5),
-        ...extractTableRows(actions?.content ?? '').map((row) => row.join(' — ')),
-      ],
-      5,
-    ),
-    scenarios: uniqueBullets(
-      [
-        ...extractBullets(scenarios?.content ?? '', 4),
-        ...extractTableRows(scenarios?.content ?? '').map((row) => row.join(' — ')),
-      ],
-      4,
-    ),
-    limitations: uniqueBullets(extractBullets(limitations?.content ?? '', 4), 4),
-    anomalies: uniqueBullets(extractBullets(anomalies?.content ?? '', 4), 4),
+    diagnosis,
+    constraint,
+    constraintTitle,
+    flowStages,
+    evidenceItems,
+    amplifiers,
+    doNotOptimize,
+    exploitActions,
+    elevateActions,
+    actions: uniqueBullets([...extractBullets(actionsContent, 4), ...(actionPlan7.slice(0, 2))], 4),
+    scenarios: uniqueBullets(doNotOptimize.slice(0, 3), 3),
+    limitations: uniqueBullets(extractBullets(limitationsSection?.content ?? '', 4), 4),
+    anomalies: uniqueBullets(extractBullets(evidenceSection?.content ?? '', 4), 4),
+    actionPlan7,
+    actionPlan14,
+    actionPlan30,
   }
 }
 
@@ -928,7 +1001,8 @@ function _buildPnlCards(facts: PnlFacts, source: ParsedSource | null): DetailCar
   ]
 }
 
-function buildGoldrattCards(facts: GoldrattFacts): DetailCard[] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildGoldrattCards(facts: GoldrattFacts): DetailCard[] {
   return [
     {
       id: 'diagnosis',
@@ -993,6 +1067,171 @@ function buildGoldrattCards(facts: GoldrattFacts): DetailCard[] {
   ]
 }
 
+function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
+  const bottleneckStage = facts.flowStages.find((s) => s.isBottleneck)
+  const bottleneckLabel = bottleneckStage?.label ?? 'Ключевой этап процесса'
+
+  return [
+    {
+      id: 'constraint',
+      title: 'Главное ограничение',
+      kicker: 'Что ограничивает результат',
+      tone: 'red',
+      icon: Target,
+      value: facts.constraintTitle || bottleneckLabel,
+      support: facts.diagnosis,
+      statusLabel: 'Критично',
+      detailTitle: 'Главное ограничение',
+      detailLead: facts.constraint,
+      bullets: facts.evidenceItems.slice(0, 3),
+      note: 'Улучшение других этапов без снятия этого ограничения не даст роста общего результата.',
+      actionText: 'Первый шаг — защитить этап от лишней работы: убрать неподходящие входы, ввести стандарт, разделить первичный скрининг и экспертную оценку.',
+      featured: true,
+    },
+    {
+      id: 'flow',
+      title: 'Карта потока',
+      kicker: 'Где застревает процесс',
+      tone: 'indigo',
+      icon: Activity,
+      value: `Поток застревает: ${bottleneckLabel}`,
+      support: 'До этого этапа вход есть, после него начинается ожидание.',
+      statusLabel: 'Основано на данных',
+      detailTitle: 'Карта потока',
+      detailLead: 'Карта показывает дисбаланс мощности: поток создаётся быстрее, чем ключевой этап успевает его пропускать дальше.',
+      bullets: [
+        'До узкого места: поток движется быстро, входы накапливаются.',
+        'На узком месте: перегрузка, ручная работа, переключения и очередь.',
+        'После узкого места: следующие этапы простаивают в ожидании входа.',
+        'Занятость команды не равна скорости системы.',
+      ],
+      note: 'Типичный симптом: до узкого места — очередь, после — ожидание.',
+      actionText: 'Сначала защитить узкое место: обеспечить качественный вход и убрать с него всё, что не двигает результат.',
+    },
+    {
+      id: 'evidence',
+      title: 'Доказательства ограничения',
+      kicker: 'Почему это не просто проблема',
+      tone: 'amber',
+      icon: AlertTriangle,
+      value: 'Ограничение видно по очереди и слабой конверсии',
+      support: 'Улучшение другого этапа почти не изменит итоговый результат.',
+      statusLabel: 'Подтверждено',
+      detailTitle: 'Доказательства ограничения',
+      detailLead: 'Не каждая проблема является ограничением. Ограничение — то, что именно задаёт скорость всей системы.',
+      bullets: facts.evidenceItems.length > 0 ? facts.evidenceItems.slice(0, 4) : [
+        'Перед этапом скопилась очередь — входы ждут более 2 дней.',
+        'После этапа — ожидание: следующие шаги простаивают.',
+        'Добавление входящего потока ухудшает ситуацию, а не улучшает.',
+        'Сроки срываются именно здесь.',
+      ],
+      note: 'Доказательство — не «нам кажется», а конкретная связка симптомов.',
+      actionText: 'Замерить очередь перед этапом и время ожидания после. Это подтвердит или опровергнет гипотезу ограничения.',
+    },
+    {
+      id: 'amplifiers',
+      title: 'Что усиливает ограничение',
+      kicker: 'Почему узкое место ещё уже',
+      tone: 'red',
+      icon: TrendingDown,
+      value: 'Лишняя работа на критичном этапе',
+      support: 'Ограничение тратит мощность не только на продуктивную работу, но и на мусорные входы и переключения.',
+      statusLabel: 'Устранимо',
+      detailTitle: 'Что усиливает ограничение',
+      detailLead: 'Ограничение усиливается не только объёмом работы, но и качеством входящего потока.',
+      bullets: facts.amplifiers.length > 0 ? facts.amplifiers.slice(0, 4) : [
+        'Ручная работа без предварительного фильтра.',
+        'Переключения между несколькими задачами одновременно.',
+        'Неполные входные данные от клиентов.',
+        'Отсутствие стандарта входной информации.',
+      ],
+      note: 'Устранение усилителей — быстрый способ высвободить мощность без добавления ресурсов.',
+      actionText: 'Сначала убрать с ограничения лишнюю работу, потом думать о найме или автоматизации.',
+    },
+    {
+      id: 'donot',
+      title: 'Что не надо оптимизировать',
+      kicker: 'Где улучшения не дадут результата',
+      tone: 'amber',
+      icon: AlertTriangle,
+      value: 'Не усиливать входящий поток, пока не снято ограничение',
+      support: 'Больше входящих заявок сейчас увеличит очередь, а не результат.',
+      statusLabel: 'Важно',
+      detailTitle: 'Что не надо оптимизировать сейчас',
+      detailLead: 'Самая опасная ошибка — начать улучшать то, что проще всего улучшить, а не то, что даёт результат.',
+      bullets: facts.doNotOptimize.length > 0 ? facts.doNotOptimize.slice(0, 5) : [
+        'Не покупать больше лидов и заявок.',
+        'Не нанимать людей без изменения процесса.',
+        'Не требовать от команды «просто работать быстрее».',
+        'Не оптимизировать этапы после ограничения.',
+        'Не добавлять поля и инструменты без изменения пропускной способности.',
+      ],
+      note: 'По Голдратту: локальная эффективность ≠ эффективность системы.',
+      actionText: 'Сначала снять главное ограничение, только потом думать об остальных улучшениях.',
+    },
+    {
+      id: 'exploit',
+      title: 'Как использовать ограничение',
+      kicker: 'Сначала выжать максимум',
+      tone: 'green',
+      icon: Zap,
+      value: 'Убрать с ограничения всю лишнюю работу',
+      support: 'До расширения ресурса нужно очистить его от мусорной нагрузки.',
+      statusLabel: 'Шаг 1',
+      detailTitle: 'Как использовать ограничение',
+      detailLead: 'Первое действие — не нанимать людей, а перестать тратить мощность ограничения на работу, которую можно устранить или сделать раньше.',
+      bullets: facts.exploitActions.length > 0 ? facts.exploitActions.slice(0, 5) : [
+        'Ввести чек-лист входной заявки.',
+        'Настроить предфильтр: неподходящие не доходят до ключевого этапа.',
+        'Выделить отдельный слот для ключевой работы.',
+        'Убрать переключения: фокус на 1–2 задачи.',
+        'Стандартизировать входные данные.',
+      ],
+      note: 'Использовать ограничение — сделать так, чтобы каждая минута критичного этапа работала на результат.',
+      actionText: 'Список мер по очистке ограничения должен быть готов за 7 дней — без найма и без новых инструментов.',
+    },
+    {
+      id: 'elevate',
+      title: 'Как расширить ограничение',
+      kicker: 'Когда текущей мощности недостаточно',
+      tone: 'blue',
+      icon: TrendingUp,
+      value: 'После очистки — добавить мощность на узкий этап',
+      support: 'Расширять нужно именно ограничение, а не просто добавлять ресурсы в систему.',
+      statusLabel: 'Шаг 2',
+      detailTitle: 'Как расширить ограничение',
+      detailLead: 'Расширять ограничение до его очистки опасно: новый ресурс утонет в том же хаосе.',
+      bullets: facts.elevateActions.length > 0 ? facts.elevateActions.slice(0, 5) : [
+        'Выделить ассистента для первичного скрининга.',
+        'Автоматизировать часть разбора с помощью AI.',
+        'Ввести scoring входящих по профилю.',
+        'Разделить квалификацию на быстрый фильтр и экспертную оценку.',
+        'Установить SLA по ответу на следующем этапе.',
+      ],
+      note: 'Расширять нужно после того, как шаги «использовать» и «подчинить» выполнены.',
+      actionText: 'Выбрать один способ расширения и запустить за 30 дней после очистки ограничения.',
+    },
+    {
+      id: 'actions',
+      title: 'План действий',
+      kicker: '7 / 14 / 30 дней',
+      tone: 'indigo',
+      icon: CheckCircle2,
+      value: 'Сначала подтвердить, затем защитить, потом расширить',
+      support: 'План построен по логике теории ограничений.',
+      statusLabel: 'По шагам',
+      detailTitle: 'План действий',
+      detailLead: 'Первые 7 дней — только подтвердить ограничение и защитить его от лишней работы. Ни найма, ни новых инструментов.',
+      bullets: [
+        facts.actionPlan7[0] ? `7 дней: ${facts.actionPlan7[0]}` : '7 дней: замерить очередь и ввести стандарт входной заявки.',
+        facts.actionPlan14[0] ? `14 дней: ${facts.actionPlan14[0]}` : '14 дней: разделить скрининг и экспертную оценку.',
+        facts.actionPlan30[0] ? `30 дней: ${facts.actionPlan30[0]}` : '30 дней: добавить ресурс или автоматизацию на узкий этап.',
+      ],
+      actionText: facts.actions[0] ?? 'За 7 дней: замерить очередь и ввести минимальный стандарт входной заявки.',
+    },
+  ]
+}
+
 function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null): DetailCard[] {
   const gap = facts.gapToBreakeven
   const negativeMonths = facts.totalMonths > 0 ? facts.totalMonths - facts.profitableMonths : null
@@ -1030,27 +1269,8 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
         'Такой бизнес нельзя оценивать только по обороту. Оборот показывает масштаб активности, но не качество модели. Если выручка не превращается в прибыль регулярно, компания фактически покупает занятость, нагрузку и операционную сложность, но не получает устойчивый экономический результат.',
       ],
       note: 'Этот блок фиксирует общий диагноз модели: бизнес не доказал повторяемую способность зарабатывать. Расшифровка причин лежит ниже — в расходной базе, динамике, пороге и ограничениях данных.',
-      actionText: 'Первое управленческое решение на уровне диагноза — перестать трактовать выручку как главный показатель здоровья. Управлять нужно регулярностью прибыли: какие месяцы становятся плюсовыми, почему плюс не повторяется и какие правила должны сделать прибыль нормой, а не исключением.',
+      actionText: 'Первое управленческое решение — разделить сеть на клубы-доноры, нейтральные клубы и клубы, которые съедают маржу. Сейчас нельзя лечить бизнес только продажами или общими сокращениями: сначала нужно понять, где именно возникает убыток.',
       featured: true,
-    },
-    {
-      id: 'key-figures',
-      title: 'Ключевые цифры',
-      kicker: 'Факт и цель',
-      tone: toneForMargin(facts.avgMargin),
-      icon: CircleDollarSign,
-      value: formatPercent(facts.avgMargin),
-      support: `Средняя выручка ${formatCurrency(facts.avgRevenue, true)}, прибыль ${formatCurrency(facts.avgProfit, true)}`,
-      statusLabel: 'Факт и цель',
-      detailTitle: 'Ключевые цифры',
-      detailLead: `${formatPercent(facts.avgMargin)} средней маржи показывает качество экономики: оборот есть, но он плохо превращается в прибыль. Это не вопрос одной плохой строки, а разрыв между масштабом бизнеса и его способностью оставлять деньги внутри модели.`,
-      bullets: [
-        `Средняя выручка ${formatCurrency(facts.avgRevenue, true)} сама по себе не слабая. Проблема в том, что при таком обороте средняя прибыль остаётся ${formatCurrency(facts.avgProfit, true)}. Это говорит не о нехватке активности, а о низком качестве конверсии выручки в финансовый результат.`,
-        'Последний месяц нельзя читать отдельно от всего периода. Один месяц может выглядеть лучше или хуже из-за сезона, разовых начислений, оплат или операционных сдвигов. Управленчески важнее средняя картина: если за длинный период маржа отрицательная, отдельный удачный месяц не меняет качество модели.',
-        `Целевая маржа ${targetMargin}% — это не просто «продать больше». Это требование к качеству каждой дополнительной продажи: после роста оборота должны остаться деньги, а не только больше смен, закупок, управленческой нагрузки и операционного шума.`,
-      ],
-      note: `Последний месяц: ${formatCurrency(facts.lastRevenue, true)} выручки и ${formatCurrency(facts.lastProfit, true)} прибыли.`,
-      actionText: 'Для управленческой панели нужно перестать смотреть на выручку отдельно. Каждая инициатива должна оцениваться через маржинальный эффект: сколько прибыли остаётся после дополнительных расходов, а не сколько оборота она добавила.',
     },
     {
       id: 'trend-anomalies',
@@ -1094,14 +1314,14 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
     },
     {
       id: 'breakeven',
-      title: 'Точка безубыточности',
+      title: 'Порог выживания',
       kicker: 'Порог выживания',
       tone: toneForGap(gap),
       icon: Gauge,
       value: breakevenProgress !== null ? `${breakevenProgress}% от порога` : 'Порог рассчитан',
       support: gap !== null ? `Не хватает ${formatCurrency(gap, true)}/мес` : 'Средняя выручка близка к порогу',
       statusLabel: gap !== null && gap > 0 ? 'Ниже порога' : 'По отчету',
-      detailTitle: 'Точка безубыточности',
+      detailTitle: 'Порог выживания',
       detailLead: '90% от порога — это не "почти нормально". Это бизнес без запаса прочности.',
       bullets: [
         gap !== null
@@ -1115,7 +1335,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
     },
     {
       id: 'actions',
-      title: 'Сценарии и план действий',
+      title: 'План действий',
       kicker: 'Первый шаг',
       tone: 'indigo',
       icon: CheckCircle2,
@@ -1154,7 +1374,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts, source: ParsedSource | null):
     },
   ]
 
-  const order = ['diagnosis', 'key-figures', 'profit-drag', 'trend-anomalies', 'breakeven', 'actions', 'limitations']
+  const order = ['diagnosis', 'profit-drag', 'trend-anomalies', 'breakeven', 'actions', 'limitations']
   return cards.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
 }
 
@@ -1390,12 +1610,44 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
         { label: 'Нет расшифровки УК', value: 'Нельзя понять, что можно оптимизировать, а что является обязательной нагрузкой.', tone: 'slate' },
         { label: 'Нет ФОТ по сменам', value: 'Нельзя отличить перерасход персонала от нормальной операционной нагрузки.', tone: 'indigo' },
       ]
-    : [
-        { label: 'Нет замеров потока', value: 'Часть причин остаётся предварительной без фактической загрузки и очередей.', tone: 'amber' },
-        { label: 'Нет разреза по этапам', value: 'Нельзя точно отделить главное ограничение от симптомов вокруг него.', tone: 'blue' },
-        { label: 'Нет данных по команде', value: 'Нельзя понять, проблема в мощности, правилах или распределении работы.', tone: 'slate' },
-        { label: 'Решения ограничены', value: 'Нельзя безопасно менять весь процесс одним движением.', tone: 'indigo' },
-      ]
+    : []
+
+  if (!isPnl) {
+    // Goldratt: show TOC theory explanation block
+    const tocItems: IntroFact[] = [
+      { label: 'Главный принцип', value: 'Скорость всей системы задаёт самый узкий участок.', tone: 'indigo' },
+      { label: 'Почему это важно', value: 'Улучшения вне ограничения часто не дают роста результата.', tone: 'amber' },
+      { label: 'Что ищем', value: 'Место, где копится очередь, падает скорость или теряется результат.', tone: 'blue' },
+      { label: 'Что делаем', value: 'Не оптимизируем всё подряд, а сначала снимаем главное ограничение.', tone: 'green' },
+    ]
+    return (
+      <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
+        <div className="mb-3 flex items-start gap-2">
+          <Target className="mt-0.5 h-4.5 w-4.5 shrink-0" style={{ color: INDIGO }} />
+          <div>
+            <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
+              Что такое бутылочное горлышко
+            </h2>
+            <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+              Бутылочное горлышко — это главное ограничение системы: этап, ресурс, человек, правило или процесс, который сильнее всего ограничивает общий результат. По теории ограничений Голдратта не нужно улучшать всё сразу. Если улучшать не ограничение, система может стать «занятее», но итоговый результат почти не вырастет. Сначала нужно найти ограничение, максимально использовать его, подчинить ему остальные процессы, расширить его мощность и затем искать следующее.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {tocItems.map((item) => (
+            <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
+                {item.label}
+              </p>
+              <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
@@ -1405,11 +1657,9 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
           <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
             Что важно знать перед чтением
           </h2>
-          {isPnl && (
-            <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
-              Отчёт построен по сводному P&L. Он показывает, что сеть убыточна и где основные зоны давления, но не отвечает на главный управленческий вопрос: вся сеть работает плохо или несколько клубов тянут результат вниз.
-            </p>
-          )}
+          <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+            Отчёт построен по сводному P&L. Он показывает, что сеть убыточна и где основные зоны давления, но не отвечает на главный управленческий вопрос: вся сеть работает плохо или несколько клубов тянут результат вниз.
+          </p>
         </div>
       </div>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -1794,19 +2044,12 @@ function CardPreview({
       case 'diagnosis':
         return (
           <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <MetricChip label="Средняя выручка" value={formatCurrency(pnlFacts.avgRevenue, true)} />
+            <MetricChip label="Средние расходы" value={formatCurrency(pnlFacts.avgCosts, true)} tone="red" />
             <MetricChip label="Средняя прибыль за период" value={formatCurrency(pnlFacts.avgProfit, true)} tone={toneForProfit(pnlFacts.avgProfit)} />
             <MetricChip label="Средняя маржа" value={formatPercent(pnlFacts.avgMargin)} tone={toneForMargin(pnlFacts.avgMargin)} />
             <MetricChip label="Прибыльных месяцев" value={`${pnlFacts.profitableMonths} из ${pnlFacts.totalMonths}`} />
-            <MetricChip label="Разрыв до безубыточности" value={formatCurrency(pnlFacts.gapToBreakeven, true)} tone={toneForGap(pnlFacts.gapToBreakeven)} />
-          </div>
-        )
-      case 'key-figures':
-        return (
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <MetricChip label="Средняя выручка за период" value={formatCurrency(pnlFacts.avgRevenue, true)} />
-            <MetricChip label={`Выручка, ${pnlFacts.monthLabels.at(-1) ?? 'посл. мес.'}`} value={formatCurrency(pnlFacts.lastRevenue, true)} />
-            <MetricChip label="Средняя маржа за период" value={formatPercent(pnlFacts.avgMargin)} tone={toneForMargin(pnlFacts.avgMargin)} />
-            <MetricChip label={`Целевой ориентир`} value={pnlFacts.targetMargin !== null ? `${pnlFacts.targetMargin}%` : 'См. отчёт'} />
+            <MetricChip label="Убыточных месяцев" value={`${Math.max(pnlFacts.totalMonths - pnlFacts.profitableMonths, 0)} из ${pnlFacts.totalMonths}`} tone="red" />
           </div>
         )
       case 'trend':
@@ -1848,9 +2091,46 @@ function CardPreview({
   }
 
   if (agentType === 'goldratt' && goldrattFacts) {
-    if (card.id === 'actions') return <NumberedPreview items={goldrattFacts.actions.slice(0, 3)} />
-    if (card.id === 'limitations') return <BulletPreview items={goldrattFacts.limitations.slice(0, 3)} />
-    return <BulletPreview items={(goldrattFacts.anomalies.length ? goldrattFacts.anomalies : goldrattFacts.scenarios).slice(0, 3)} />
+    switch (card.id) {
+      case 'constraint':
+        return (
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <MetricChip label="Узкое место" value={goldrattFacts.flowStages.find((s) => s.isBottleneck)?.label ?? 'Определён'} tone="red" />
+            <MetricChip label="Доказательств" value={`${goldrattFacts.evidenceItems.length} признаков`} tone="amber" />
+            <MetricChip label="Не оптимизировать" value={`${goldrattFacts.doNotOptimize.length} направлений`} tone="slate" />
+            <MetricChip label="Первый шаг" value="7 дней" tone="indigo" />
+          </div>
+        )
+      case 'flow':
+        return <FlowPipelineChart stages={goldrattFacts.flowStages} />
+      case 'evidence':
+        return <NumberedPreview items={goldrattFacts.evidenceItems.slice(0, 3)} />
+      case 'amplifiers':
+        return <BulletPreview items={goldrattFacts.amplifiers.slice(0, 3)} />
+      case 'donot':
+        return <BulletPreview items={goldrattFacts.doNotOptimize.slice(0, 3)} />
+      case 'exploit':
+        return <NumberedPreview items={goldrattFacts.exploitActions.slice(0, 3)} />
+      case 'elevate':
+        return <BulletPreview items={goldrattFacts.elevateActions.slice(0, 3)} />
+      case 'actions':
+        return (
+          <div className="space-y-1.5">
+            {[
+              goldrattFacts.actionPlan7[0] ? `7 дн: ${goldrattFacts.actionPlan7[0]}` : null,
+              goldrattFacts.actionPlan14[0] ? `14 дн: ${goldrattFacts.actionPlan14[0]}` : null,
+              goldrattFacts.actionPlan30[0] ? `30 дн: ${goldrattFacts.actionPlan30[0]}` : null,
+            ].filter(Boolean).map((item, i) => (
+              <div key={i} className="flex gap-2 text-sm leading-snug" style={{ color: TEXT }}>
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#818CF8' }} />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        )
+      default:
+        return <BulletPreview items={goldrattFacts.anomalies.slice(0, 3)} />
+    }
   }
 
   return <p className="text-sm leading-relaxed" style={{ color: TEXT2 }}>{card.support ?? card.value}</p>
@@ -1984,6 +2264,144 @@ function LimitationsPanel({ sourceWarning }: { sourceWarning?: string }) {
   )
 }
 
+function FlowPipelineChart({ stages }: { stages: Array<{ label: string; isBottleneck: boolean; time?: string }> }) {
+  const displayStages = stages.length > 0 ? stages : [
+    { label: 'Заявка клиента', isBottleneck: false },
+    { label: 'Профиль вакансии', isBottleneck: false },
+    { label: 'Поиск кандидатов', isBottleneck: false },
+    { label: 'Первичная квалификация', isBottleneck: true },
+    { label: 'Интервью', isBottleneck: false },
+    { label: 'Согласование', isBottleneck: false },
+    { label: 'Оффер / Закрытие', isBottleneck: false },
+  ]
+
+  return (
+    <div className="flex flex-wrap items-start gap-1.5 py-1">
+      {displayStages.map((stage, index) => (
+        <div key={stage.label} className="flex items-center gap-1.5">
+          <div
+            className="flex flex-col items-center gap-0.5 rounded-2xl border px-2.5 py-2 text-center"
+            style={{
+              background: stage.isBottleneck ? '#FEF2F2' : '#F8FAFC',
+              borderColor: stage.isBottleneck ? '#FECACA' : BORDER_SOFT,
+              minWidth: '80px',
+              maxWidth: '115px',
+            }}
+          >
+            {stage.isBottleneck && (
+              <span className="mb-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ color: '#DC2626' }}>
+                ⚠ Узкое место
+              </span>
+            )}
+            <span className="text-[10.5px] font-semibold leading-tight" style={{ color: stage.isBottleneck ? '#B91C1C' : TEXT }}>
+              {stage.label}
+            </span>
+            {stage.time && (
+              <span className="mt-0.5 text-[9px]" style={{ color: TEXT3 }}>{stage.time}</span>
+            )}
+          </div>
+          {index < displayStages.length - 1 && (
+            <span className="shrink-0 text-[10px]" style={{ color: TEXT3 }}>→</span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
+  const steps = [
+    {
+      window: '7 дней',
+      color: '#EEF2FF',
+      textColor: '#4338CA',
+      items: facts.actionPlan7.length > 0 ? facts.actionPlan7 : [
+        'Замерить очередь перед узким этапом',
+        'Ввести чек-лист входной заявки',
+        'Убрать явно неподходящие входы из очереди',
+      ],
+    },
+    {
+      window: '14 дней',
+      color: '#F0FDF4',
+      textColor: '#166534',
+      items: facts.actionPlan14.length > 0 ? facts.actionPlan14 : [
+        'Разделить первичный фильтр и экспертную оценку',
+        'Настроить приоритеты по срочности',
+        'Ввести правило фокуса: 1–2 задачи в потоке',
+      ],
+    },
+    {
+      window: '30 дней',
+      color: '#F8FAFC',
+      textColor: '#475569',
+      items: facts.actionPlan30.length > 0 ? facts.actionPlan30 : [
+        'Добавить ресурс или автоматизацию на узкий этап',
+        'Внедрить scoring входящих по профилю',
+        'Сравнить throughput до и после, найти следующее ограничение',
+      ],
+    },
+  ]
+
+  return (
+    <div className="space-y-3">
+      {steps.map((step) => (
+        <div key={step.window} className="rounded-3xl border p-3.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+          <span className="mb-2.5 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: step.color, color: step.textColor }}>
+            {step.window}
+          </span>
+          <div className="space-y-1.5">
+            {step.items.map((item, i) => (
+              <div key={i} className="flex gap-2.5 text-sm leading-snug" style={{ color: '#334155' }}>
+                <span
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
+                  style={{ background: step.color, color: step.textColor }}
+                >
+                  {i + 1}
+                </span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function GoldrattLimitationsPanel({ facts }: { facts: GoldrattFacts }) {
+  const exact = [
+    'Структура потока, место скопления очереди и симптомы ограничения — надёжные наблюдения.',
+    'Логика Голдратта применима: ограничение определяется по симптомам, а не произвольно.',
+  ]
+  const missing = [
+    'Без замеров фактического времени каждого этапа нельзя точно подтвердить ограничение количественно.',
+    'Без финансовых данных нельзя оценить денежный эффект от снятия ограничения.',
+  ]
+  const next = facts.limitations.length > 0 ? facts.limitations : [
+    'Замеры времени каждого этапа по каждому элементу потока.',
+    'Загрузка сотрудников на критичном этапе.',
+    'P&L за последние 3–6 месяцев для финансовой версии анализа.',
+  ]
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем достоверно</p>
+        <BulletPreview items={exact} />
+      </div>
+      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения опасны без проверки</p>
+        <BulletPreview items={missing} />
+      </div>
+      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
+        <BulletPreview items={next.slice(0, 3)} />
+      </div>
+    </div>
+  )
+}
+
 function DashboardCards({
   cards,
   agentType,
@@ -2007,7 +2425,7 @@ function DashboardCards({
   }
 
   return (
-    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <section className={agentType === 'pnl' ? 'grid grid-cols-1 gap-4 xl:grid-cols-2' : 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'}>
       {cards.map((card) => (
         <article
           key={card.id}
@@ -2048,10 +2466,25 @@ function DashboardCards({
             <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
           </div>
 
+          {agentType === 'pnl' && card.actionText && (
+            <div className="mt-3 rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#F8FAFC' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>
+                Управленческий вывод
+              </p>
+              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: '#334155' }}>
+                {card.actionText}
+              </p>
+            </div>
+          )}
+
           <div className="mt-auto flex items-center justify-between gap-3 pt-3">
-            <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
-              {card.statusLabel}
-            </p>
+            {agentType === 'pnl'
+              ? <span />
+              : (
+                <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
+                  {card.statusLabel}
+                </p>
+              )}
             <button
               type="button"
               onClick={(event) => {
@@ -2061,7 +2494,7 @@ function DashboardCards({
               className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold"
               style={{ color: accent }}
             >
-              Подробнее
+              {agentType === 'pnl' ? 'Что это значит' : 'Подробнее'}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -2236,9 +2669,111 @@ function DetailVisual({
     }
   }
 
+  if (agentType === 'goldratt' && goldrattFacts) {
+    switch (card.id) {
+      case 'constraint':
+        return (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <MetricChip label="Узкое место" value={goldrattFacts.flowStages.find((s) => s.isBottleneck)?.label ?? 'Ключевой этап'} tone="red" />
+              <MetricChip label="Доказательств" value={`${goldrattFacts.evidenceItems.length} симптомов`} tone="amber" />
+              <MetricChip label="Усилителей" value={`${goldrattFacts.amplifiers.length} факторов`} tone="red" />
+              <MetricChip label="Первый горизонт" value="7 дней" tone="indigo" />
+            </div>
+            {goldrattFacts.evidenceItems.length > 0 && (
+              <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Главные доказательства</p>
+                <NumberedPreview items={goldrattFacts.evidenceItems.slice(0, 4)} />
+              </div>
+            )}
+          </div>
+        )
+      case 'flow':
+        return (
+          <div className="space-y-3">
+            <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Этапы процесса</p>
+              <FlowPipelineChart stages={goldrattFacts.flowStages} />
+            </div>
+            <div className="rounded-3xl border p-4 text-sm leading-relaxed" style={{ borderColor: BORDER, background: '#FBFCFE', color: TEXT2 }}>
+              До узкого места входы накапливаются в очередь. На узком месте — перегрузка и ручная работа. После него следующие этапы простаивают. Занятость команды ≠ скорость системы.
+            </div>
+          </div>
+        )
+      case 'evidence':
+        return (
+          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Доказательства ограничения</p>
+            <NumberedPreview items={goldrattFacts.evidenceItems.length > 0 ? goldrattFacts.evidenceItems : [
+              'Перед этапом скопилась очередь — входы ждут более 2 дней.',
+              'После этапа — ожидание: следующие шаги простаивают.',
+              'Добавление входящего потока ухудшает ситуацию.',
+              'Сроки срываются именно здесь.',
+            ]} />
+          </div>
+        )
+      case 'amplifiers':
+        return (
+          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Что усиливает узкое место</p>
+            <BulletPreview items={goldrattFacts.amplifiers.length > 0 ? goldrattFacts.amplifiers : [
+              'Ручная работа без предварительного фильтра.',
+              'Переключения между несколькими задачами.',
+              'Неполные входные данные от клиентов.',
+              'Отсутствие стандарта входной информации.',
+            ]} />
+          </div>
+        )
+      case 'donot':
+        return (
+          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Не делать сейчас</p>
+            <BulletPreview items={goldrattFacts.doNotOptimize.length > 0 ? goldrattFacts.doNotOptimize : [
+              'Не покупать больше лидов и заявок.',
+              'Не нанимать людей без изменения процесса.',
+              'Не требовать от команды «просто работать быстрее».',
+              'Не оптимизировать этапы после ограничения.',
+            ]} />
+          </div>
+        )
+      case 'exploit':
+        return (
+          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Как использовать ограничение</p>
+            <NumberedPreview items={goldrattFacts.exploitActions.length > 0 ? goldrattFacts.exploitActions : [
+              'Ввести чек-лист входной заявки.',
+              'Настроить предфильтр: неподходящие не доходят до ключевого этапа.',
+              'Выделить отдельный слот для ключевой работы.',
+              'Убрать переключения: фокус на 1–2 задачи.',
+            ]} />
+          </div>
+        )
+      case 'elevate':
+        return (
+          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Как расширить ограничение</p>
+            <BulletPreview items={goldrattFacts.elevateActions.length > 0 ? goldrattFacts.elevateActions : [
+              'Выделить ассистента для первичного скрининга.',
+              'Автоматизировать часть разбора с помощью AI.',
+              'Ввести scoring входящих по профилю.',
+              'Разделить квалификацию на быстрый фильтр и экспертную оценку.',
+            ]} />
+          </div>
+        )
+      case 'actions':
+        return <GoldrattActionPlanPanel facts={goldrattFacts} />
+      default:
+        return (
+          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+            <GoldrattLimitationsPanel facts={goldrattFacts} />
+          </div>
+        )
+    }
+  }
+
   return (
     <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-      <BulletPreview items={agentType === 'goldratt' && goldrattFacts ? goldrattFacts.actions.slice(0, 3) : card.bullets.slice(0, 3)} />
+      <BulletPreview items={card.bullets.slice(0, 3)} />
     </div>
   )
 }
@@ -2297,12 +2832,14 @@ function DetailDrawer({
           </div>
         )}
 
-        <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-          <h3 className="mb-2 text-sm font-semibold" style={{ color: TEXT }}>Что делать</h3>
-          <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>
-            {card.actionText ?? card.support ?? card.value}
-          </p>
-        </div>
+        {agentType !== 'pnl' && (
+          <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+            <h3 className="mb-2 text-sm font-semibold" style={{ color: TEXT }}>Что делать</h3>
+            <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>
+              {card.actionText ?? card.support ?? card.value}
+            </p>
+          </div>
+        )}
       </div>
     </ModalShell>
   )
@@ -2619,7 +3156,7 @@ export default function ReportDisplay({
   const pnlFacts = useMemo(() => (data.agentType === 'pnl' ? buildPnlFacts(data.report, source, sections) : null), [data.agentType, data.report, sections, source])
   const goldrattFacts = useMemo(() => (data.agentType === 'goldratt' ? buildGoldrattFacts(data.report, sections) : null), [data.agentType, data.report, sections])
   const cards = useMemo(
-    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlDashboardCardsV2(pnlFacts, source) : buildGoldrattCards(goldrattFacts!)),
+    () => (data.agentType === 'pnl' && pnlFacts ? buildPnlDashboardCardsV2(pnlFacts, source) : buildGoldrattDashboardCards(goldrattFacts!)),
     [data.agentType, goldrattFacts, pnlFacts, source],
   )
 
@@ -2670,10 +3207,12 @@ export default function ReportDisplay({
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 print:px-0 print:py-4">
         <IntroBlockV2 agentType={data.agentType} />
 
-        <ChipNav
-          cards={cards}
-          onOpenCard={setOpenCardId}
-        />
+        {data.agentType !== 'pnl' && (
+          <ChipNav
+            cards={cards}
+            onOpenCard={setOpenCardId}
+          />
+        )}
 
         <DashboardCards
           cards={cards}
