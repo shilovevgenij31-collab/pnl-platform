@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -2023,7 +2023,7 @@ function CardPreview({
 }) {
   if (agentType === 'pnl' && pnlFacts) {
     if (card.id === 'trend-anomalies') {
-      return <MiniTrend labels={pnlFacts.monthLabels} revenue={pnlFacts.revenueSeries} profit={pnlFacts.profitSeries} accent={accent} />
+      return <InteractiveTrendChart labels={pnlFacts.monthLabels} revenue={pnlFacts.revenueSeries} profit={pnlFacts.profitSeries} />
     }
     if (card.id === 'profit-drag') {
       return (
@@ -2075,7 +2075,7 @@ function CardPreview({
           </div>
         )
       case 'actions':
-        return null
+        return <ScenarioPlanPanel facts={pnlFacts} />
       case 'limitations':
         return null
       case 'anomalies':
@@ -2402,6 +2402,72 @@ function GoldrattLimitationsPanel({ facts }: { facts: GoldrattFacts }) {
   )
 }
 
+function pnlActionContent(card: DetailCard): { title: string; main: string; text: string; icon: LucideIcon; tone: Tone } | null {
+  switch (card.id) {
+    case 'diagnosis':
+      return {
+        title: 'Что делать первым',
+        main: 'Разделить сеть на клубы-доноры, нейтральные клубы и клубы, которые съедают маржу',
+        text: card.actionText ?? 'Сейчас нельзя лечить бизнес только продажами или общими сокращениями. Сначала нужно понять, где именно возникает убыток.',
+        icon: Target,
+        tone: 'red',
+      }
+    case 'profit-drag':
+      return {
+        title: 'Что делать с расходной базой',
+        main: 'Разбирать УК, ФОТ и аренду по каждому клубу, а не резать всё подряд',
+        text: 'Главный риск — начать экономить на мелких или видимых статьях и не тронуть настоящую причину. Если проблема сидит в аренде, УК или структуре ФОТ конкретных клубов, экономия на продуктах или сервисе может ухудшить клиентский опыт и не исправить маржу. Первое действие: собрать расходы по клубам и найти, где база не соответствует выручке.',
+        icon: Building2,
+        tone: 'amber',
+      }
+    case 'trend-anomalies':
+      return {
+        title: 'Что делать по динамике',
+        main: 'Разделить месяцы на пиковые, обычные и провальные',
+        text: card.actionText ?? 'Нельзя управлять сетью по среднему месяцу. Для пиковых месяцев нужны правила удержания маржи, для обычных — контроль базы расходов, для провальных — заранее подготовленный сценарий снижения операционной нагрузки.',
+        icon: Calendar,
+        tone: 'blue',
+      }
+    case 'breakeven':
+      return {
+        title: 'Что делать с порогом',
+        main: 'Не ставить целью просто “выйти в ноль”',
+        text: '9,5 млн ₽ — это нижняя граница выживания, а не здоровая цель. Нужен запас прочности: либо снижать базу расходов, либо целиться выше порога, иначе каждый слабый месяц снова будет возвращать сеть в минус.',
+        icon: Gauge,
+        tone: 'red',
+      }
+    case 'limitations':
+      return {
+        title: 'Какие решения сейчас опасны',
+        main: 'Не принимать радикальные решения по всей сети одним движением',
+        text: card.actionText ?? 'Нельзя решать “резать всё”, “лить маркетинг” или “закрывать слабые направления” только по сводному P&L. Без детализации можно ударить по сильным клубам и не решить проблему слабых.',
+        icon: AlertTriangle,
+        tone: 'amber',
+      }
+    default:
+      return null
+  }
+}
+
+function PnlActionCard({ card }: { card: DetailCard }) {
+  const action = pnlActionContent(card)
+  if (!action) return null
+  const colors = TONES[action.tone]
+  return (
+    <aside className="flex h-full flex-col rounded-3xl border p-4" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
+      <div className="mb-3 flex items-start gap-3">
+        <IconBadge icon={action.icon} tone={action.tone} />
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Управленческий вывод</p>
+          <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
+        </div>
+      </div>
+      <p className="text-lg font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
+      <p className="mt-3 text-sm leading-relaxed" style={{ color: '#334155' }}>{action.text}</p>
+    </aside>
+  )
+}
+
 function DashboardCards({
   cards,
   agentType,
@@ -2425,16 +2491,16 @@ function DashboardCards({
   }
 
   return (
-    <section className={agentType === 'pnl' ? 'grid grid-cols-1 gap-4 xl:grid-cols-2' : 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'}>
+    <section className={agentType === 'pnl' ? 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]' : 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'}>
       {cards.map((card) => (
+        <Fragment key={card.id}>
         <article
-          key={card.id}
           role="button"
           tabIndex={0}
           onClick={() => onOpen(card.id)}
           onKeyDown={(event) => openFromKeyboard(event, card.id)}
           className={`flex flex-col rounded-3xl border p-4 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-            card.featured ? 'md:col-span-2 xl:col-span-2' : ''
+            agentType === 'pnl' && card.id === 'actions' ? 'xl:col-span-2' : card.featured && agentType !== 'pnl' ? 'md:col-span-2 xl:col-span-2' : ''
           }`}
           style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
         >
@@ -2446,7 +2512,7 @@ function DashboardCards({
                 <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
               </div>
             </div>
-            <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
+            {agentType !== 'pnl' && <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>}
           </div>
 
           <div className={`flex-1 ${card.featured ? 'min-h-[126px]' : 'min-h-[104px]'}`}>
@@ -2465,17 +2531,6 @@ function DashboardCards({
             </div>
             <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
           </div>
-
-          {agentType === 'pnl' && card.actionText && (
-            <div className="mt-3 rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#F8FAFC' }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>
-                Управленческий вывод
-              </p>
-              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: '#334155' }}>
-                {card.actionText}
-              </p>
-            </div>
-          )}
 
           <div className="mt-auto flex items-center justify-between gap-3 pt-3">
             {agentType === 'pnl'
@@ -2499,6 +2554,8 @@ function DashboardCards({
             </button>
           </div>
         </article>
+        {agentType === 'pnl' && card.id !== 'actions' && <PnlActionCard card={card} />}
+        </Fragment>
       ))}
     </section>
   )
@@ -2797,6 +2854,7 @@ function DetailDrawer({
 }) {
   if (!card) return null
   const bullets = dedupeBullets(card.bullets, card.detailLead, card.note, card.id === 'actions' ? 2 : 4)
+  const isPnl = agentType === 'pnl'
   return (
     <ModalShell open={open} title={card.detailTitle} onClose={onClose}>
         <div className="space-y-4">
@@ -2810,15 +2868,15 @@ function DetailDrawer({
             <div>
             <StatusPill tone={card.tone}>{card.statusLabel}</StatusPill>
             <p className="mt-2.5 text-lg font-semibold leading-snug" style={{ color: TEXT }}>{card.detailLead}</p>
-            {card.note && (
+            {!isPnl && card.note && (
               <p className="mt-1.5 text-sm leading-relaxed" style={{ color: TEXT2 }}>{card.note}</p>
             )}
           </div>
         </div>
 
-        <DetailVisual card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
+        {!isPnl && <DetailVisual card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />}
 
-        {bullets.length > 0 && card.id !== 'actions' && card.id !== 'limitations' && (
+        {bullets.length > 0 && (isPnl || (card.id !== 'actions' && card.id !== 'limitations')) && (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: CARD }}>
             <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>Что это значит</h3>
             <div className="space-y-2 text-sm leading-relaxed" style={{ color: '#334155' }}>
@@ -2832,7 +2890,7 @@ function DetailDrawer({
           </div>
         )}
 
-        {agentType !== 'pnl' && (
+        {!isPnl && (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
             <h3 className="mb-2 text-sm font-semibold" style={{ color: TEXT }}>Что делать</h3>
             <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>
@@ -3124,8 +3182,8 @@ function SourceTableBlockV2({
 function FullReportBlock({ report }: { report: string }) {
   const components = makeMarkdownComponents()
   return (
-    <section className="rounded-3xl border p-5" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
-      <div className="mb-4 border-b pb-4" style={{ borderColor: BORDER_SOFT }}>
+    <section className="rounded-3xl border p-5 sm:p-6" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 14px 34px rgba(15, 23, 42, 0.06)' }}>
+      <div className="mb-5 border-b pb-4" style={{ borderColor: BORDER_SOFT }}>
         <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
           Исходный текст анализа
         </p>
@@ -3136,9 +3194,11 @@ function FullReportBlock({ report }: { report: string }) {
           Этот блок содержит полный текстовый вариант AI-анализа. Основной управленческий обзор — карточки выше — удобнее для навигации и принятия решений. Текстовая версия полезна для детального изучения и копирования.
         </p>
       </div>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {sanitizeMarkdownForDisplay(report)}
-      </ReactMarkdown>
+      <div className="mx-auto max-w-4xl">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+          {sanitizeMarkdownForDisplay(report)}
+        </ReactMarkdown>
+      </div>
     </section>
   )
 }
