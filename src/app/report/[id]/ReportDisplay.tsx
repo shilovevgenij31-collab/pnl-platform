@@ -1915,18 +1915,18 @@ function LimitationsPanel({ sourceWarning }: { sourceWarning?: string }) {
   ].filter(Boolean) as string[]
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      <div className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем точно</p>
-        <div className="mt-2"><BulletPreview items={exact} /></div>
+    <div className="space-y-3">
+      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем точно</p>
+        <BulletPreview items={exact} />
       </div>
-      <div className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения опасны</p>
-        <div className="mt-2"><BulletPreview items={missing} /></div>
+      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения сейчас опасны</p>
+        <BulletPreview items={missing} />
       </div>
-      <div className="rounded-3xl border p-3" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для решения</p>
-        <div className="mt-2"><BulletPreview items={next.slice(0, 3)} /></div>
+      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
+        <BulletPreview items={next.slice(0, 3)} />
       </div>
     </div>
   )
@@ -2456,14 +2456,14 @@ function SourceTableBlockV2({
       </div>
 
       <div className="space-y-3 px-4 py-3.5 sm:px-5">
-        <div className="grid min-w-0 gap-2 text-xs sm:grid-cols-4">
-          {[
-            ['Файл', fileName],
-            ['Лист', sheetName],
-            ['Строки', rowCount],
-            ['Колонки', columnCount],
-          ].map(([label, value]) => (
-            <div key={label} className="min-w-0 overflow-hidden rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+        <div className="grid min-w-0 gap-2 text-xs sm:grid-cols-5">
+          {([
+            ['Файл', fileName, 'sm:col-span-2'],
+            ['Лист', sheetName, ''],
+            ['Строки', rowCount, ''],
+            ['Колонки', columnCount, ''],
+          ] as [string, string, string][]).map(([label, value, colSpan]) => (
+            <div key={label} className={`min-w-0 overflow-hidden rounded-2xl border px-3 py-2${colSpan ? ` ${colSpan}` : ''}`} style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
               <p className="font-semibold" style={{ color: TEXT3 }}>{label}</p>
               <p className="mt-1 max-w-full truncate font-medium" style={{ color: TEXT }} title={value}>{value}</p>
             </div>
@@ -2521,13 +2521,16 @@ function FullReportBlock({ report }: { report: string }) {
   const components = makeMarkdownComponents()
   return (
     <section className="rounded-3xl border p-5" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
-      <div className="mb-4">
+      <div className="mb-4 border-b pb-4" style={{ borderColor: BORDER_SOFT }}>
         <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
-          Технические детали
+          Исходный текст анализа
         </p>
         <h2 className="mt-1 text-lg font-semibold" style={{ color: TEXT }}>
-          Полный текстовый отчёт
+          Полная текстовая версия анализа
         </h2>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+          Этот блок содержит полный текстовый вариант AI-анализа. Основной управленческий обзор — карточки выше — удобнее для навигации и принятия решений. Текстовая версия полезна для детального изучения и копирования.
+        </p>
       </div>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {sanitizeMarkdownForDisplay(report)}
@@ -2630,7 +2633,7 @@ export default function ReportDisplay({
               style={{ borderColor: BORDER, color: TEXT2, background: '#FFFFFF' }}
             >
               {showFullReport ? <X className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
-              {showFullReport ? 'Скрыть полный текстовый отчёт' : 'Показать полный текстовый отчёт'}
+              {showFullReport ? 'Скрыть исходную AI-версию отчёта' : 'Показать исходную AI-версию отчёта'}
             </button>
           </div>
           {showFullReport && (
