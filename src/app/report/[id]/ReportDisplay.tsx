@@ -1305,53 +1305,13 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       detailTitle: 'Главное ограничение',
       detailLead: facts.constraint,
       bullets: [
-        'Ограничение здесь не в том, что у агентства мало идей или слабый продукт. Ограничение в том, что почти каждый путь к росту проходит через один и тот же ресурс: внимание, решения и календарь собственника. Пока стратегия, продукт, часть продаж и операционка завязаны на одном человеке, бизнес не превращает активность в предсказуемый поток денег.',
-        'Опасность в том, что расфокус легко выглядит как развитие. Направлений много, команда занята, гипотезы появляются постоянно, но незавершённые инициативы не становятся продажами. Для бизнеса это означает не просто усталость собственника, а потерю скорости денег: усилия расходуются, а денежный поток почти не ускоряется.',
-        'Главная ошибка сейчас — лечить ситуацию количеством инициатив. Ещё один продукт, ещё один канал или ещё одна матрица приоритетов добавят движения, но не снимут ограничение. Первым нужно выбрать один поток денег и подчинить ему решения, контент, продажи и календарь собственника.',
+        'Ограничение здесь не в том, что у агентства мало идей или слабый продукт. Ограничение в том, что почти каждый путь к росту проходит через один и тот же ресурс: внимание, решения и календарь собственника.',
+        'Расфокус легко выглядит как развитие — направлений много, команда занята, гипотезы появляются постоянно. Но незавершённые инициативы не становятся продажами. Усилия расходуются, а поток денег почти не ускоряется.',
+        'Главная ошибка сейчас — лечить ситуацию количеством инициатив. Первым нужно выбрать один поток денег и подчинить ему решения, контент, продажи и календарь собственника.',
       ],
       note: 'Пока рост и продажи остаются завязаны на одном центре принятия решений, компания будет производить больше движения, чем денег.',
-      actionText: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один поток денег на ближайшие 30 дней и подчинить ему контент, продажи, продукт и командные решения.',
+      actionText: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один поток денег на ближайшие 30 дней.',
       featured: true,
-    },
-    {
-      id: 'evidence',
-      title: 'Почему это именно ограничение',
-      kicker: 'Логика системы',
-      tone: 'indigo',
-      icon: Activity,
-      value: 'Почти каждый путь к росту проходит через один и тот же ресурс — внимание собственника',
-      support: 'Просевшие заявки, слабые продажи, расфокус и незавершённые активы выглядят как разные проблемы, но почти все проходят через один центр принятия решений.',
-      statusLabel: 'Главный вывод',
-      detailTitle: 'Почему это именно ограничение',
-      detailLead: 'Это ограничение системы, потому что почти каждый путь к росту проходит через один и тот же ресурс — внимание и решения собственника.',
-      bullets: [
-        'Симптомы здесь разные только на поверхности. Просевшие заявки, слабая конверсия, постоянный расфокус и перегруз собственника не требуют пяти разных объяснений. Это одна система, которая упирается в ограниченный ресурс принятия решений.',
-        'Проблема не в нехватке идей или продуктовой экспертизы. Проблема в том, что сильных направлений слишком много и они не подчинены одному денежному приоритету. Поэтому часть инициатив превращается в замороженные ресурсы: время уже вложено, а поток денег по ним ещё не появился.',
-        'Если лечить каждый симптом отдельно — отдельно контент, отдельно продукт, отдельно продажи, отдельно найм — система снова расползётся. Точка сборки одна: выбрать главный поток денег и перестать пропускать через собственника всё сразу.',
-      ],
-      note: 'Это не просто “мало маркетинга”. Это системная история про одно узкое место, через которое проходят почти все решения о росте.',
-      actionText: 'Это ограничение системы, потому что почти каждый путь к росту проходит через один и тот же ресурс — внимание и решения собственника.',
-    },
-    {
-      id: 'donot',
-      title: 'Что не надо оптимизировать сейчас',
-      kicker: 'Что не трогать первым',
-      tone: 'amber',
-      icon: AlertTriangle,
-      value: 'Не запускать новый продукт, не плодить каналы и не нанимать под хаос',
-      support: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку быстрее, чем результат.',
-      statusLabel: 'Стоп-лист',
-      detailTitle: 'Что не надо оптимизировать сейчас',
-      detailLead: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку. Бизнес становится активнее, но не обязательно прибыльнее.',
-      bullets: facts.doNotOptimize.length > 0 ? facts.doNotOptimize.slice(0, 5) : [
-        'Не запускать ещё один продукт, пока действующие направления не сведены к одному понятному потоку денег.',
-        'Не добавлять ещё один канал контента ради ощущения движения: новый контур привлечения не лечит ограничение в фокусе и продажах.',
-        'Не нанимать под хаос, если роли, приоритеты и контур продаж всё ещё не определены.',
-        'Не делать новую матрицу приоритетов, если главная проблема в отсутствии жёсткого отказа от лишнего.',
-        'Не резать расходы вместо роста потока денег: это может снять давление, но не заменит рост продаж и денежных поступлений.',
-      ],
-      note: 'Локальная оптимизация здесь опасна тем, что усиливает незавершённое: проектов и активности больше, а денег не больше.',
-      actionText: 'Если ограничение сидит в фокусе собственника и несобранной системе продаж, новый продукт, канал или найм только увеличат число незавершённых задач. Бизнес станет активнее, но поток денег почти не ускорится.',
     },
     {
       id: 'exploit',
@@ -1364,33 +1324,52 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       statusLabel: 'Подтверждено',
       detailTitle: 'Как снять ограничение',
       detailLead: 'Сначала использовать и очистить ограничение. Только потом расширять. Иначе расширение просто закрепит хаос.',
-      bullets: facts.evidenceItems.length > 0 ? facts.evidenceItems.slice(0, 4) : [
+      bullets: [
         'Использовать ограничение: на ближайшие 30 дней убрать с собственника всё, что не двигает выбранный поток денег. Не открывать новые гипотезы до тех пор, пока не понятно, какое направление реально даёт деньги быстрее всего.',
-        'Подчинить систему: команда, контент, продукт и партнёрские решения должны обслуживать один выбранный приоритет. Если задача не помогает выбранному направлению сделать продажу, улучшить оффер или ускорить цикл сделки — она уходит в backlog.',
-        'Расширить ограничение: после очистки фокуса можно делегировать операционку, закрепить роли с партнёром и выделить ответственного за контур продаж или контента. Но расширять нужно только после выбора потока денег.',
-        'Не наоборот: не нанимать, не запускать и не автоматизировать хаос до того, как выбран главный поток денег.',
+        'Подчинить систему: команда, контент, продукт и партнёрские решения должны обслуживать один выбранный приоритет. Если задача не помогает выбранному направлению — она уходит в backlog.',
+        'Расширить ограничение: после очистки фокуса можно делегировать операционку, закрепить роли с партнёром и выделить ответственного за контур продаж. Но расширять нужно только после выбора потока денег.',
       ],
-      note: 'Логика здесь принципиальна: сначала защитить ограничение от расфокуса, затем построить вокруг него ритм команды, и только после этого добавлять людей или процессы.',
-      actionText: 'На 30 дней убрать с собственника всё, что не двигает выбранный поток денег. Не открывать новые гипотезы, не переключаться между направлениями и не расширять команду до тех пор, пока не выбран денежный приоритет.',
+      note: 'Логика принципиальна: сначала защитить ограничение от расфокуса, затем построить вокруг него ритм команды, и только после этого добавлять людей или процессы.',
+      actionText: 'На 30 дней убрать с собственника всё, что не двигает выбранный поток денег. Не открывать новые гипотезы и не расширять команду до тех пор, пока не выбран денежный приоритет.',
     },
     {
-      id: 'actions',
-      title: 'Первые действия',
-      kicker: '48 часов / 7 дней / 14 дней',
-      tone: 'indigo',
-      icon: CheckCircle2,
-      value: 'Сначала выбрать один поток денег, потом заморозить лишнее и запустить один управляемый цикл продаж',
-      support: 'План нужен не для активности, а для быстрой проверки гипотезы ограничения на реальном бизнесе.',
-      statusLabel: 'По шагам',
-      detailTitle: 'Первые действия',
-      detailLead: 'Порядок действий здесь важнее количества задач. Сначала нужен выбор одного потока денег, потом жёсткий стоп-лист по лишнему и только потом — проверка, что продажи реально двинулись.',
-      bullets: [
-        facts.actionPlan7[0] ? `48 часов: ${facts.actionPlan7[0]}` : '48 часов: выбрать один поток денег и временно заморозить новые инициативы.',
-        facts.actionPlan14[0] ? `7 дней: ${facts.actionPlan14[0]}` : '7 дней: собрать всё незавершённое и разделить его на деньги сейчас, деньги в 30 дней и заморозку.',
-        facts.actionPlan30[0] ? `14 дней: ${facts.actionPlan30[0]}` : '14 дней: запустить один управляемый цикл продаж по выбранному направлению.',
+      id: 'donot',
+      title: 'Что сейчас нельзя делать',
+      kicker: 'Стоп-лист',
+      tone: 'amber',
+      icon: AlertTriangle,
+      value: 'Не запускать новый продукт, не плодить каналы и не нанимать под хаос',
+      support: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку быстрее, чем результат.',
+      statusLabel: 'Стоп-лист',
+      detailTitle: 'Что сейчас нельзя делать',
+      detailLead: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку. Бизнес становится активнее, но не обязательно прибыльнее.',
+      bullets: facts.doNotOptimize.length > 0 ? facts.doNotOptimize.slice(0, 4) : [
+        'Не запускать ещё один продукт, пока действующие направления не сведены к одному понятному потоку денег.',
+        'Не добавлять ещё один канал контента ради ощущения движения: новый контур не лечит ограничение в фокусе и продажах.',
+        'Не нанимать под хаос, если роли, приоритеты и контур продаж всё ещё не определены.',
+        'Не резать расходы вместо роста потока денег: это снижает давление, но не заменяет рост продаж.',
       ],
-      note: 'Если после этих шагов не стало понятнее, где деньги и что тормозит рост, значит гипотезу ограничения нужно пересобрать, а не наращивать активность.',
-      actionText: 'За ближайшие две недели должно стать видно три вещи: какой поток денег главный, какие проекты нужно заморозить и может ли выбранное направление дать измеримые продажи без нового хаоса.',
+      note: 'Локальная оптимизация усиливает незавершённое: проектов и активности больше, а денег не больше.',
+      actionText: 'Если ограничение сидит в фокусе собственника и несобранной системе продаж, новый продукт, канал или найм только увеличат число незавершённых задач. Бизнес станет активнее, но поток денег почти не ускорится.',
+    },
+    {
+      id: 'limitations',
+      title: 'Что усилит точность',
+      kicker: 'Дополнительный контекст',
+      tone: 'slate',
+      icon: Info,
+      value: 'Ограничение понятно. Для подтверждения нужны данные.',
+      support: `Уровень уверенности: ${facts.confidenceLabel}. ${facts.confidenceNote}`,
+      statusLabel: `Уверенность: ${facts.confidenceLabel}`,
+      detailTitle: 'Что усилит точность анализа',
+      detailLead: 'Для поиска ограничения достаточно контекста. Для подтверждения — нужны данные по продажам, проектам и финансам.',
+      bullets: [
+        'P&L или финансы по направлениям помогут связать ограничение с конкретными цифрами прибыли.',
+        'CRM или воронка продаж покажут, где реально теряются сделки и насколько система работает без собственника.',
+        'Список проектов и гипотез позволит отделить работающие активы от замороженных ресурсов.',
+        'Описание процессов и ролей сделает вывод про собственника как бутылочное горлышко точнее.',
+      ],
+      note: `${facts.confidenceLabel}: вывод основан на контексте, а не на полной операционной карте.`,
     },
   ]
 }
@@ -2249,7 +2228,7 @@ function CardPreview({
     switch (card.id) {
       case 'constraint':
         return (
-          <div>
+          <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
               {goldrattFacts.actualMarginLabel && <MetricChip label="Факт" value={goldrattFacts.actualMarginLabel} tone="amber" />}
               {goldrattFacts.targetMarginLabel && <MetricChip label="Цель" value={goldrattFacts.targetMarginLabel} tone="blue" />}
@@ -2259,60 +2238,57 @@ function CardPreview({
               <MetricChip label="Фон" value="Много гипотез" tone="amber" />
             </div>
             <GoldrattConstraintPreview facts={goldrattFacts} />
-          </div>
-        )
-      case 'evidence':
-        return (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {goldrattFacts.evidenceItems.slice(0, 3).map((item, index) => {
-              const [title, ...rest] = item.split(/[:—-]\s+/)
-              const body = rest.join(' — ') || item
-              return (
-                <div key={`${item}-${index}`} className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>
-                    {rest.length > 0 ? title : `Сигнал ${index + 1}`}
-                  </p>
-                  <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
-                    {body}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
-        )
-      case 'donot':
-        return (
-          <div>
-            <BulletPreview items={goldrattFacts.doNotOptimize.slice(0, 2)} />
-            <GoldrattDoNotGrid />
+            <div className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Почему это ограничение</p>
+              <div className="space-y-1.5">
+                {[
+                  'Почти каждый путь к росту проходит через один ресурс — внимание и решения собственника.',
+                  'Продажи зависят от ручного внимания, а не от повторяемого процесса.',
+                  'Новые инициативы добавляют нагрузку в тот же узел, вместо того чтобы ускорять поток денег.',
+                ].map((item, i) => (
+                  <div key={i} className="flex gap-2 text-[11px] leading-snug">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: '#EEF2FF', color: '#3730A3' }}>{i + 1}</span>
+                    <span style={{ color: TEXT }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )
       case 'exploit':
         return (
           <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-1 text-[10px]">
+              {(['Найти', 'Использовать', 'Подчинить', 'Расширить', 'Найти следующее'] as const).map((step, i, arr) => (
+                <span key={step} className="flex items-center gap-1">
+                  <span className="rounded-full px-2 py-0.5 font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>{step}</span>
+                  {i < arr.length - 1 && <span style={{ color: TEXT3 }}>→</span>}
+                </span>
+              ))}
+            </div>
             <div className="grid gap-3 lg:grid-cols-3">
               <div className="rounded-2xl border p-3" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Использовать ограничение</p>
                 <BulletPreview items={goldrattFacts.exploitActions.length > 0 ? goldrattFacts.exploitActions.slice(0, 3) : [
                   'На ближайшие 30 дней убрать с собственника всё, что не двигает выбранный поток денег.',
-                  'Не открывать новые гипотезы до тех пор, пока не понятно, какое направление реально даёт деньги быстрее всего.',
-                  'Время собственника направить на продажи, упаковку оффера и решения, которые дают поток денег.',
+                  'Не открывать новые гипотезы, пока непонятно, какое направление даёт деньги быстрее всего.',
+                  'Время собственника — только на продажи, оффер и решения, которые дают поток денег.',
                 ]} />
               </div>
               <div className="rounded-2xl border p-3" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Подчинить систему</p>
                 <BulletPreview items={goldrattFacts.subordinateActions.length > 0 ? goldrattFacts.subordinateActions.slice(0, 3) : [
-                  'Команда, контент, продукт и партнёрские решения должны обслуживать один выбранный приоритет.',
-                  'Если задача не помогает выбранному направлению сделать продажу, улучшить оффер или ускорить цикл сделки — она уходит в backlog.',
-                  'Партнёрские роли и календарь собственника нужно временно упростить вокруг одного денежного потока.',
+                  'Команда, контент, продукт и партнёрские решения — только под один выбранный приоритет.',
+                  'Если задача не помогает выбранному направлению сделать продажу — она уходит в backlog.',
+                  'Календарь собственника временно упростить вокруг одного денежного потока.',
                 ]} />
               </div>
               <div className="rounded-2xl border p-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить ограничение</p>
                 <BulletPreview items={goldrattFacts.elevateActions.length > 0 ? goldrattFacts.elevateActions.slice(0, 3) : [
-                  'После очистки фокуса можно делегировать операционку, которая регулярно затягивает собственника обратно в ручной режим.',
-                  'Закрепить роли с партнёром и определить, кто реально отвечает за продажи и выполнение.',
-                  'Выделить ответственного за контур продаж или контента только после выбора потока денег.',
+                  'После очистки фокуса — делегировать операционку, которая регулярно затягивает собственника.',
+                  'Закрепить роли с партнёром: кто отвечает за продажи, кто за delivery.',
+                  'Расширять только после выбора потока денег, не раньше.',
                 ]} />
               </div>
             </div>
@@ -2322,10 +2298,55 @@ function CardPreview({
                 Не нанимать, не запускать и не автоматизировать хаос до того, как выбран главный поток денег.
               </p>
             </div>
+            <div className="border-t pt-3" style={{ borderColor: BORDER_SOFT }}>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Первые действия</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  { window: '48 часов', color: '#EEF2FF', textColor: '#4338CA', items: goldrattFacts.actionPlan7.length > 0 ? goldrattFacts.actionPlan7.slice(0, 2) : ['Выбрать один поток денег', 'Заморозить новые инициативы'] },
+                  { window: '7 дней', color: '#F0FDF4', textColor: '#166534', items: goldrattFacts.actionPlan14.length > 0 ? goldrattFacts.actionPlan14.slice(0, 2) : ['Собрать список проектов', 'Пометить: деньги / близко / заморозить'] },
+                  { window: '14 дней', color: '#F8FAFC', textColor: '#475569', items: goldrattFacts.actionPlan30.length > 0 ? goldrattFacts.actionPlan30.slice(0, 2) : ['Запустить цикл продаж', 'Сделать 20–30 контактов'] },
+                ].map((step) => (
+                  <div key={step.window} className="rounded-2xl border p-2.5" style={{ borderColor: BORDER_SOFT, background: step.color }}>
+                    <span className="text-[10px] font-semibold" style={{ color: step.textColor }}>{step.window}</span>
+                    <div className="mt-1 space-y-1">
+                      {step.items.map((item, i) => (
+                        <p key={i} className="text-[11px] leading-snug" style={{ color: TEXT }}>· {item}</p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )
-      case 'actions':
-        return <GoldrattActionPlanPanel facts={goldrattFacts} />
+      case 'donot':
+        return (
+          <div className="space-y-3">
+            <GoldrattDoNotGrid />
+            <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#92400E' }}>Почему это опасно</p>
+              <p className="mt-1 text-sm leading-snug" style={{ color: '#78350F' }}>
+                Если ограничение сидит в фокусе собственника и несобранной системе продаж, новый продукт, канал или найм только увеличат число незавершённых задач. Бизнес станет активнее, но поток денег почти не ускорится.
+              </p>
+            </div>
+          </div>
+        )
+      case 'limitations':
+        return (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {['P&L / финансы', 'CRM / воронка продаж', 'Список проектов', 'Описание процесса', 'Оргструктура / роли', 'Загрузка команды'].map((item) => (
+                <span key={item} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT, color: TEXT2 }}>
+                  {item}
+                </span>
+              ))}
+            </div>
+            <div className="rounded-2xl border px-3 py-2.5 text-sm leading-relaxed" style={{ borderColor: BORDER_SOFT, background: '#F8FAFC', color: TEXT2 }}>
+              <span className="font-semibold" style={{ color: TEXT }}>Уровень уверенности: {goldrattFacts.confidenceLabel}.</span>{' '}
+              {goldrattFacts.confidenceNote}
+            </div>
+          </div>
+        )
       default:
         return <p className="text-sm leading-relaxed" style={{ color: TEXT2 }}>{card.support ?? card.value}</p>
     }
@@ -2999,28 +3020,10 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
       return {
         title: 'Что делать первым',
         main: 'Выбрать один поток денег на 30 дней и заморозить лишнее',
-        text: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один денежный поток и подчинить ему контент, продажи, продукт и командные задачи.',
+        text: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один денежный поток и подчинить ему контент, продажи, продукт и командные задачи на ближайшие 30 дней.',
         icon: Target,
         tone: 'red',
-        tags: ['Один поток денег', 'Фокус', 'Стоп новым гипотезам'],
-      }
-    case 'evidence':
-      return {
-        title: 'Управленческий вывод',
-        main: 'Это ограничение системы, а не просто слабый маркетинг',
-        text: 'Просевшие заявки, слабая конверсия и расфокус выглядят как разные проблемы, но почти каждый путь к росту упирается в один и тот же ресурс — внимание и решения собственника. Пока он не подчинён одному потоку денег, бизнес будет производить больше движения, чем результата.',
-        icon: Activity,
-        tone: 'indigo',
-        tags: ['Один корень', 'Симптомы разные', 'Фокус собственника'],
-      }
-    case 'donot':
-      return {
-        title: 'Почему это опасно',
-        main: 'Улучшения неограниченных частей создают больше движения, но не больше прибыли',
-        text: 'Если ограничение сидит в фокусе собственника и несобранной системе продаж, новый продукт, канал или найм только увеличат число незавершённых задач. Бизнес станет активнее, но поток денег почти не ускорится.',
-        icon: AlertTriangle,
-        tone: 'amber',
-        tags: ['Не плодить незавершённое', 'Не нанимать под хаос', 'Не лечить не то'],
+        tags: ['Один поток денег', 'Фокус', 'Стоп гипотезам'],
       }
     default:
       return null
@@ -3234,104 +3237,35 @@ function GoldrattInfoBlock({ facts }: { facts: GoldrattFacts | null }) {
   )
 }
 
-function GoldrattMethodologyBlock() {
-  const steps = [
-    ['Найти', 'Что сейчас ограничивает рост сильнее всего.'],
-    ['Использовать', 'Очистить ограничение от лишней нагрузки.'],
-    ['Подчинить', 'Собрать остальные решения вокруг него.'],
-    ['Расширить', 'Добавлять мощность только после очистки.'],
-    ['Найти следующее', 'После снятия первого узкого места система покажет следующее.'],
-  ] as const
-
-  return (
-    <section className="mt-4 rounded-3xl border p-3 sm:p-3.5" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
-      <div className="mb-2.5 flex items-start gap-2">
-        <Target className="mt-0.5 h-4.5 w-4.5 shrink-0" style={{ color: INDIGO }} />
-        <div>
-          <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
-            Метод: 5 шагов Голдратта
-          </h2>
-          <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
-            Сначала найти ограничение, потом использовать его, подчинить ему систему, расширить и только после этого искать следующее.
-          </p>
-        </div>
-      </div>
-      <div className="grid gap-2 lg:grid-cols-5">
-        {steps.map(([label, value]) => (
-          <div key={label} className="rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>{label}</p>
-            <p className="mt-1 text-xs leading-snug" style={{ color: TEXT }}>{value}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
 
 function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
   if (!facts) return null
 
   const fileName = facts.sourceMetadata['Источник'] ?? 'Контекст предпринимателя'
-  const structure = facts.sourceMetadata['Структура'] ?? 'Ответы на вопросы + дополнительные документы'
   const period = facts.sourceMetadata['Период'] ?? 'Не указан'
-  const sourceSummary = facts.sourceMetadata['Что приложено'] ?? 'Описание бизнеса, текущая боль, роли, продажи и проекты'
-  const cards = [
-    ['P&L / финансы', 'Чтобы увидеть, как ограничение связано с прибылью, маржой и личной целью собственника.'],
-    ['CRM / воронка продаж', 'Чтобы проверить, действительно ли слабое место сидит в продажах, а не только в ощущении собственника.'],
-    ['Список текущих проектов', 'Чтобы отделить направления, которые дают поток денег, от замороженных ресурсов.'],
-    ['Описание процесса', 'Чтобы понять, где система реально тормозит: в продажах, производстве, согласовании или у собственника.'],
-    ['Оргструктура / роли', 'Чтобы увидеть, кто держит критические решения и где собственник сам становится ограничением.'],
-    ['Таблица задач или загрузки команды', 'Чтобы проверить, какие инициативы создают хаос и что уже перегружено операционно.'],
-  ] as const
 
   return (
-    <section className="mt-4 overflow-hidden rounded-3xl border" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
-      <div className="border-b px-4 py-3 sm:px-5" style={{ borderColor: BORDER_SOFT }}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="max-w-3xl">
-            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
-              Дополнительный контекст
-            </p>
-            <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>
-              Что усилит точность анализа
-            </h2>
-            <p className="mt-1 text-sm leading-snug" style={{ color: TEXT2 }}>
-              Для поиска ограничения не всегда нужна идеальная таблица. Часто достаточно контекста бизнеса и текущей боли. Но точность выше, если приложить документы, которые отделяют ощущение от подтверждённого ограничения.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <StatusPill tone="blue">Уровень уверенности: {facts.confidenceLabel}</StatusPill>
-            <span className="max-w-[280px] text-right text-[10px] leading-relaxed" style={{ color: TEXT3 }}>
-              {facts.confidenceNote}
-            </span>
-          </div>
+    <section className="mt-4 rounded-3xl border p-4 sm:p-5" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>Исходные данные</p>
+          <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>Что усилит точность анализа</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-snug" style={{ color: TEXT2 }}>
+            Для поиска ограничения достаточно контекста. Для подтверждения нужны данные, которые отделяют ощущение от факта.
+          </p>
         </div>
+        <StatusPill tone="blue">Уверенность: {facts.confidenceLabel}</StatusPill>
       </div>
-
-      <div className="space-y-3 px-4 py-3.5 sm:px-5">
-        <div className="grid gap-2 text-xs sm:grid-cols-4">
-          {[
-            ['Файл / основа', fileName],
-            ['Структура', structure],
-            ['Период', period],
-            ['Контекст', sourceSummary],
-          ].map(([label, value]) => (
-            <div key={label} className="min-w-0 overflow-hidden rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-              <p className="font-semibold" style={{ color: TEXT3 }}>{label}</p>
-              <p className="mt-1 max-w-full break-words font-medium" style={{ color: TEXT }} title={value}>{value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {cards.map(([title, text]) => (
-            <div key={title} className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
-              <p className="text-sm font-semibold" style={{ color: TEXT }}>{title}</p>
-              <p className="mt-1 text-sm leading-relaxed" style={{ color: TEXT2 }}>{text}</p>
-            </div>
-          ))}
-        </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {['P&L / финансы', 'CRM / воронка продаж', 'Список проектов', 'Описание процесса', 'Оргструктура / роли', 'Загрузка команды'].map((item) => (
+          <span key={item} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT, color: TEXT2 }}>
+            {item}
+          </span>
+        ))}
       </div>
+      <p className="mt-2.5 text-[11px] leading-relaxed" style={{ color: TEXT3 }}>
+        Источник: {fileName} · Период: {period} · {facts.confidenceNote}
+      </p>
     </section>
   )
 }
@@ -3355,19 +3289,18 @@ function GoldrattDashboard({
   }
 
   const byId = (id: string) => cards.find((card) => card.id === id) ?? null
-  const sequence = ['constraint', 'exploit', 'donot', 'actions', 'evidence'] as const
+  const sequence = ['constraint', 'exploit', 'donot', 'limitations'] as const
 
   return (
     <div className="space-y-4">
       {sequence.map((id) => {
         const card = byId(id)
         if (!card) return null
-        const isFullWidth = id === 'exploit' || id === 'actions'
-        const visualHeavy = id === 'evidence'
+        const isFullWidth = id === 'exploit' || id === 'donot' || id === 'limitations'
 
         if (!isFullWidth) {
           return (
-          <div key={card.id} className={`grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] ${visualHeavy ? 'items-start' : 'items-stretch'}`}>
+          <div key={card.id} className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <article
               role="button"
               tabIndex={0}
@@ -3410,7 +3343,7 @@ function GoldrattDashboard({
                 </button>
               </div>
             </article>
-            <div className={visualHeavy ? 'self-start' : 'h-full'}>
+            <div className="h-full">
               <GoldrattActionCard card={card} />
             </div>
           </div>
@@ -4198,7 +4131,6 @@ export default function ReportDisplay({
                 onOpen={setOpenCardId}
               />
             )}
-            <GoldrattMethodologyBlock />
           </>
         )}
 
