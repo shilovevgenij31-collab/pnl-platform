@@ -42,7 +42,7 @@
 - Фокус: Теория ограничений, Throughput/Inventory/OE, Five Focusing Steps
 - System prompt: `src/lib/ai/prompts/goldrattPrompt.ts`
 - User prompt builder: `buildGoldrattUserPrompt`
-- Структура отчёта: 12 разделов (Карта бизнеса → Ограничения анализа)
+- Структура отчёта: 5 разделов (Главное ограничение → Что проверить дальше)
 - Цветовая схема: violet/purple
 - URL: `/analyze?agent=goldratt`
 
