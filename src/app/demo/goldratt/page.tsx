@@ -8,9 +8,9 @@ export const metadata = {
 const demoData = {
   id: 'demo-goldratt',
   report: demoGoldrattReport,
-  company: 'FlowDesk AI (демо)',
+  company: 'ED Agency / Антон (демо)',
   date: '25 мая 2026',
-  mode: 'Goldratt / TOC',
+  mode: 'Голдратт / ограничения',
   agentType: 'goldratt' as const,
   sourceText: demoGoldrattSourceText,
 }

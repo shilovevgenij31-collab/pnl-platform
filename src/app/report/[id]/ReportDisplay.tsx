@@ -187,6 +187,11 @@ interface GoldrattFacts {
   diagnosis: string
   constraint: string
   constraintTitle: string
+  businessAgeLabel: string | null
+  teamLabel: string | null
+  actualMarginLabel: string | null
+  targetMarginLabel: string | null
+  ownerGoalLabel: string | null
   flowStages: Array<{ label: string; isBottleneck: boolean; time?: string }>
   detailedFlowStages: GoldrattFlowStageDetail[]
   trendData: GoldrattTrendPoint[]
@@ -208,6 +213,7 @@ interface GoldrattFacts {
   amplifiers: string[]
   doNotOptimize: string[]
   exploitActions: string[]
+  subordinateActions: string[]
   elevateActions: string[]
   actions: string[]
   scenarios: string[]
@@ -216,6 +222,8 @@ interface GoldrattFacts {
   actionPlan7: string[]
   actionPlan14: string[]
   actionPlan30: string[]
+  confidenceLabel: string
+  confidenceNote: string
 }
 
 interface DetailCard {
@@ -506,6 +514,24 @@ function parseGoldrattTables(sourceText?: string | null): GoldrattSourceData {
     teamRows: parsedTeamRows,
     lossRows: parsedLossRows,
   }
+}
+
+function parseKeyValueMetadata(sourceText?: string | null): Record<string, string> {
+  const metadata: Record<string, string> = {}
+  if (!sourceText) return metadata
+
+  for (const rawLine of sourceText.split('\n')) {
+    const line = cleanText(rawLine)
+    if (!line || line.startsWith('===')) break
+    const separatorIndex = line.indexOf(':')
+    if (separatorIndex <= 0) continue
+    const key = cleanText(line.slice(0, separatorIndex))
+    const value = cleanText(line.slice(separatorIndex + 1))
+    if (!key || !value) continue
+    metadata[key] = value
+  }
+
+  return metadata
 }
 
 function detectSectionType(heading: string): SectionType {
@@ -877,122 +903,79 @@ function buildGoldrattFacts(report: string, sections: ReportSection[], sourceTex
     sections.find((s) => keywords.some((k) => cleanText(s.heading).toLowerCase().includes(k.toLowerCase()))) ?? null
 
   const constraintSection = findGS(['главное ограничение'])
-  const flowSection = findGS(['карта потока'])
-  const evidenceSection = findGS(['доказательства'])
-  const amplifiersSection = findGS(['усиливает'])
-  const donotSection = findGS(['не надо', 'не нужно оптимиз'])
-  const exploitSection = findGS(['использовать ограничение', 'как использовать'])
-  const elevateSection = findGS(['расширить ограничение', 'как расширить'])
-  const actionsSection = findGS(['план действий'])
-  const limitationsSection = findGS(['ограничения анализа'])
+  const evidenceSection = findGS(['почему это именно'])
+  const donotSection = findGS(['что не надо', 'что нельзя'])
+  const exploitSection = findGS(['как использовать'])
+  const subordinateSection = findGS(['как подчинить'])
+  const elevateSection = findGS(['как расширить'])
+  const actionsSection = findGS(['первые действия'])
+  const limitationsSection = findGS(['что проверить дальше'])
 
   const constraintContent = constraintSection?.content ?? ''
+  const evidenceContent = evidenceSection?.content ?? ''
   const actionsContent = actionsSection?.content ?? ''
+  const metadata = parseKeyValueMetadata(sourceText)
 
-  const flowStages = parseFlowStages(flowSection?.content ?? '')
-  const evidenceItems = uniqueBullets(extractBullets(evidenceSection?.content ?? '', 7), 7)
-  const amplifiers = uniqueBullets(extractBullets(amplifiersSection?.content ?? '', 7), 7)
-  const doNotOptimize = uniqueBullets([
-    ...extractTableRows(donotSection?.content ?? '').map((row) => row[0] ?? '').filter(Boolean),
-    ...extractBullets(donotSection?.content ?? '', 6),
-  ], 6)
-  const exploitActions = uniqueBullets(extractBullets(exploitSection?.content ?? '', 7), 7)
-  const elevateActions = uniqueBullets(extractBullets(elevateSection?.content ?? '', 6), 6)
-  const fallbackActionPlan7 = [
-    'Замерить время реакции по каждому менеджеру отдельно',
-    'Посчитать лиды без контакта за 2 часа за последние 30 дней',
-    'Определить часы и дни максимальной очереди',
-    'Ввести ежедневный контроль «лид без статуса»',
-  ]
-  const fallbackActionPlan14 = [
-    'Ввести SLA первого ответа: 15 минут рабочего времени',
-    'Настроить авто-напоминания по лидам без статуса',
-    'Распределить лиды по приоритетам: горячие, тёплые, холодные',
-    'Убрать ручную рутину с менеджеров входящих',
-  ]
-  const fallbackActionPlan30 = [
-    'Добавить координатора входящих заявок или автоматический первичный отбор',
-    'Перераспределить роли и разделить входящий поток по каналам',
-    'Проверить рост диагностик и оплат — это главная метрика изменения',
-    'Оценить, не стало ли внедрение следующим ограничением после снятия первого',
-  ]
-
-  const rawActionPlan7 = extractBulletsAfterHeading(actionsContent, '7 дней', '14 дней')
-  const rawActionPlan14 = extractBulletsAfterHeading(actionsContent, '14 дней', '30 дней')
-  const rawActionPlan30 = extractBulletsAfterHeading(actionsContent, '30 дней', '')
-  const normalizedActionPlan7 = rawActionPlan7.length > 0 ? rawActionPlan7 : fallbackActionPlan7
-  const normalizedActionPlan14 =
-    rawActionPlan14.length > 0 ? rawActionPlan14.filter((item) => !normalizedActionPlan7.includes(item)) : fallbackActionPlan14
-  const normalizedActionPlan30 =
-    rawActionPlan30.length > 0
-      ? rawActionPlan30.filter((item) => !normalizedActionPlan7.includes(item) && !normalizedActionPlan14.includes(item))
-      : fallbackActionPlan30
-  const actionPlan7 = uniqueBullets(normalizedActionPlan7, 4)
-  const actionPlan14 = uniqueBullets(normalizedActionPlan14.length > 0 ? normalizedActionPlan14 : fallbackActionPlan14, 4)
-  const actionPlan30 = uniqueBullets(normalizedActionPlan30.length > 0 ? normalizedActionPlan30 : fallbackActionPlan30, 4)
+  const evidenceItems = uniqueBullets(extractBullets(evidenceContent, 6), 6)
+  const doNotOptimize = uniqueBullets(extractBullets(donotSection?.content ?? '', 6), 6)
+  const exploitActions = uniqueBullets(extractBullets(exploitSection?.content ?? '', 5), 5)
+  const subordinateActions = uniqueBullets(extractBullets(subordinateSection?.content ?? '', 4), 4)
+  const elevateActions = uniqueBullets(extractBullets(elevateSection?.content ?? '', 5), 5)
+  const actionBullets = uniqueBullets(extractBullets(actionsContent, 5), 5)
+  const actionPlan7 = actionBullets[0] ? [actionBullets[0]] : ['Выбрать один поток денег на ближайшие 30 дней и временно заморозить новые инициативы.']
+  const actionPlan14 = actionBullets[1] ? [actionBullets[1]] : ['Собрать список незавершённых проектов и разделить их на дающие деньги, близкие к деньгам и заморозку.']
+  const actionPlan30 = actionBullets[2] ? [actionBullets[2]] : ['Запустить один управляемый цикл продаж по выбранному направлению и посмотреть, что реально масштабируется.']
   const constraintTitle = extractConstraintTitle(constraintContent)
   const diagnosis = firstSentence(constraintContent, 'Система упирается в одно управленческое ограничение.')
   const constraint = ruSanitize(firstSentence(constraintContent, 'Главное ограничение определено.'))
-
-  const sourceData = parseGoldrattTables(sourceText)
-  const detailedFlowStages = sourceData.processRows
-  const trendData = sourceData.trendRows
-  const teamRows = sourceData.teamRows
-  const lossRows = sourceData.lossRows
-  const mainStage = detailedFlowStages.find((stage) => stage.isBottleneck) ?? detailedFlowStages[1] ?? detailedFlowStages[0]
-  const futureConstraint =
-    teamRows
-      .filter((row) => !/входящ/i.test(row.role))
-      .sort((a, b) => b.load - a.load)[0]?.role ?? null
-  const managerLoad = teamRows.find((row) => /входящ/i.test(row.role))?.load ?? mainStage?.load ?? 0
-  const lateContactLoss = lossRows.find((row) => /2 ч|контакт/i.test(row.reason))?.revenue ?? 0
-  const leadVolume = mainStage?.input ?? trendData.at(-1)?.leads ?? 0
-  const processedVolume = mainStage?.output ?? trendData.at(-1)?.processed ?? 0
-  const stuckLeads = mainStage ? Math.max(mainStage.input - mainStage.output, mainStage.queue) : 0
-  const reactionTime = trendData.at(-1)?.reaction ?? parseNumber(mainStage?.wait ?? '') ?? 0
-  const reactionNorm = mainStage?.norm ?? '2 ч'
-  const normalizedFlowStages =
-    flowStages.length > 0
-      ? flowStages
-      : detailedFlowStages.map((stage) => ({
-          label: stage.label,
-          isBottleneck: stage.isBottleneck,
-          time: stage.wait,
-        }))
+  const futureConstraint = firstSentence(limitationsSection?.content ?? '', '', 180) || null
+  const confidenceLabel = metadata['Уровень уверенности'] ?? 'средний'
+  const confidenceNote =
+    sourceText
+      ? 'Вывод основан на ответах предпринимателя и дополнительном контексте, а не на полной CRM-выгрузке.'
+      : 'Вывод основан на контексте бизнеса. Без документов часть причин остаётся гипотезой.'
 
   return {
     diagnosis,
     constraint,
     constraintTitle,
-    flowStages: normalizedFlowStages,
-    detailedFlowStages,
-    trendData,
-    processRows: detailedFlowStages,
-    trendRows: trendData,
-    teamRows,
-    lossRows,
-    mainConstraint: mainStage?.label ?? constraintTitle ?? 'Первичная обработка заявок',
+    businessAgeLabel: metadata['Стаж бизнеса'] ?? metadata['Формат'] ?? null,
+    teamLabel: metadata['Команда'] ?? null,
+    actualMarginLabel: metadata['Фактическая рентабельность'] ?? null,
+    targetMarginLabel: metadata['Целевая рентабельность'] ?? null,
+    ownerGoalLabel: metadata['Личная цель'] ?? metadata['Личная цель собственника'] ?? null,
+    flowStages: [],
+    detailedFlowStages: [],
+    trendData: [],
+    processRows: [],
+    trendRows: [],
+    teamRows: [],
+    lossRows: [],
+    mainConstraint: constraintTitle ?? 'Главное ограничение определено',
     futureConstraint,
-    leadVolume,
-    processedVolume,
-    stuckLeads,
-    reactionTime,
-    reactionNorm,
-    managerLoad,
-    lateContactLoss,
-    sourceMetadata: sourceData.metadata,
+    leadVolume: 0,
+    processedVolume: 0,
+    stuckLeads: 0,
+    reactionTime: 0,
+    reactionNorm: '',
+    managerLoad: 0,
+    lateContactLoss: 0,
+    sourceMetadata: metadata,
     evidenceItems,
-    amplifiers,
+    amplifiers: [],
     doNotOptimize,
     exploitActions,
+    subordinateActions,
     elevateActions,
-    actions: uniqueBullets([...extractBullets(actionsContent, 4), ...(actionPlan7.slice(0, 2))], 4),
+    actions: uniqueBullets([...actionBullets, ...extractBullets(limitationsSection?.content ?? '', 2)], 4),
     scenarios: uniqueBullets(doNotOptimize.slice(0, 3), 3),
     limitations: uniqueBullets(extractBullets(limitationsSection?.content ?? '', 4), 4),
-    anomalies: uniqueBullets(extractBullets(evidenceSection?.content ?? '', 4), 4),
+    anomalies: [],
     actionPlan7,
     actionPlan14,
     actionPlan30,
+    confidenceLabel,
+    confidenceNote,
   }
 }
 
@@ -1316,119 +1299,98 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       kicker: 'Что ограничивает результат',
       tone: 'red',
       icon: Target,
-      value: 'Первичная обработка заявок ограничивает рост',
-      support: 'Лиды растут, но система не успевает превращать их в диагностики и оплаты.',
+      value: 'Фокус собственника и продажи ограничивают рост ED Agency',
+      support: 'У агентства есть продуктовая экспертиза и направления роста, но система распыляется между операционкой, гипотезами и незавершёнными проектами.',
       statusLabel: 'Критично',
       detailTitle: 'Главное ограничение',
       detailLead: facts.constraint,
       bullets: [
-        'Здесь видно не просто слабый участок, а этап, который задаёт потолок всей системе. Пока первичный контакт не успевает быстро забирать входящий поток, весь остальной процесс живёт в режиме перегруза до ограничения и недогруза после него. В терминах бизнеса это означает одно: спрос приходит быстрее, чем компания умеет превращать его в деньги.',
-        'Опасность в том, что рост входящего потока легко принять за признак здоровья. На практике это даёт больше заявок без ответа, больше просроченных касаний и больше упущенной выручки. Команда выглядит занятой, но занятость здесь маскирует потерю пропускной способности: система тратит усилия, не увеличивая пропорционально результат.',
-        'Самая вероятная ошибка сейчас — лечить ситуацию до узкого места: усиливать рекламу, спорить о качестве трафика или давить на следующие этапы. Первым нужно делать не это, а наводить дисциплину на входе: кто отвечает, за сколько минут, как лид получает статус и почему он зависает без движения.',
+        'Здесь ограничение сидит не в количестве идей и не в качестве продукта, а в том, что почти каждый путь к росту проходит через одного и того же человека. Пока собственник одновременно держит стратегию, продукт, часть продаж и операционное управление, бизнес не может превратить активность в предсказуемый поток денег.',
+        'Опасность в том, что расфокус маскируется под развитие. Направлений много, команда занята, идеи постоянно появляются, но незавершённые инициативы не становятся продажами. Для бизнеса это означает не просто усталость собственника, а потерю проходимости: усилия тратятся, а денежный поток не ускоряется.',
+        'Главная ошибка сейчас — лечить ситуацию количеством инициатив: ещё один продукт, ещё один канал, ещё одна приоритизация. Первым нужно не расширяться, а выбрать один поток денег и подчинить ему решения, контент, продажи и календарь собственника.',
       ],
-      note: 'Пока это ограничение не разгружено, остальная воронка не сможет стабильно расти вместе со спросом.',
-      actionText: 'Первый шаг — не увеличивать входящий поток, а разгрузить узкий этап: ввести SLA, убрать рутину с менеджеров, сделать очередь видимой.',
+      note: 'Пока рост и продажи остаются завязаны на одном центре принятия решений, компания будет производить больше движения, чем денег.',
+      actionText: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один поток денег на ближайшие 30 дней и подчинить ему контент, продажи, продукт и командные решения.',
       featured: true,
     },
     {
-      id: 'flow',
-      title: 'Карта потока',
-      kicker: 'Где застревает процесс',
+      id: 'evidence',
+      title: 'Почему это именно ограничение',
+      kicker: 'Логика системы',
       tone: 'indigo',
       icon: Activity,
-      value: 'Поток застревает на первичном контакте',
-      support: 'До первичного контакта спрос есть, после него поток резко сужается.',
-      statusLabel: 'Основано на данных',
-      detailTitle: 'Карта потока',
-      detailLead: 'Карта потока нужна не для описания процесса как такового, а для ответа на вопрос, где спрос физически превращается в очередь. Именно в этой точке система начинает терять скорость, деньги и управляемость.',
+      value: 'Почти каждый путь к росту проходит через один и тот же ресурс — внимание собственника',
+      support: 'Симптомы разные: просевшие заявки, слабые продажи, расфокус и незавершённые активы. Корень один.',
+      statusLabel: 'Главный вывод',
+      detailTitle: 'Почему это именно ограничение',
+      detailLead: 'Это ограничение системы, потому что почти каждый путь к росту проходит через один и тот же ресурс — внимание и решения собственника.',
       bullets: [
-        'До узкого места бизнес уже оплатил привлечение лида. Если заявка не забирается быстро в работу, компания теряет не только время, но и уже потраченные деньги на этот спрос.',
-        'На узком месте система сжигает скорость: ручные переключения, ожидание статуса и перегруз менеджеров превращают полезный поток в очередь. Это не косметическая проблема процесса, а прямой удар по выручке и конверсии в следующий этап.',
-        'После узкого места следующие этапы могут выглядеть “почти свободными”. Это не обязательно означает, что они эффективны. Чаще это означает, что до них просто не доходит достаточно качественно обработанных заявок, поэтому локальные улучшения ниже по цепочке почти не меняют результат всей системы.',
+        'Симптомы выглядят разными, но для них не нужно придумывать пять причин. Когда заявки проседают, продажи не стали системой, новые гипотезы конкурируют за внимание, а стратегия встаёт каждый раз, когда собственник уходит в операционку, это уже не набор частных проблем. Это одна и та же система, которая упирается в ограниченный фокус принятия решений.',
+        'Здесь нет дефицита идей или продуктовой экспертизы. Наоборот, сильных направлений слишком много. Но именно это и превращает часть активов в замороженные ресурсы: время уже вложено, а поток денег по ним ещё не появился. Для собственника это выглядит как “мы делаем много всего”, но для системы это означает накопление незавершённого без роста потока денег.',
+        'Если лечить каждый симптом отдельно — отдельно контент, отдельно продукт, отдельно продажи, отдельно найм — система снова расползётся. Точка сборки одна: выбрать главный поток денег и перестать пропускать через собственника всё сразу.',
       ],
-      note: 'Главный признак такого потока: очередь копится до ограничения, а после него начинается дефицит нормального входа.',
-      actionText: 'Сначала защитить узкое место: обеспечить качественный вход, убрать всю лишнюю работу, ввести ежедневный контроль очереди.',
-    },
-    {
-      id: 'evidence',
-      title: 'Доказательства ограничения',
-      kicker: 'Почему оплаты не растут',
-      tone: 'amber',
-      icon: AlertTriangle,
-      value: 'Лиды растут, а оплаты не растут вместе с ними',
-      support: 'Улучшение маркетинга или продукта не снимет это ограничение.',
-      statusLabel: 'Подтверждено',
-      detailTitle: 'Доказательства ограничения',
-      detailLead: 'Этот блок показывает не просто красивую динамику, а причинную связь. Если лидов становится больше, а деньги не растут вместе с ними, значит система теряет результат не на входе в маркетинг, а внутри собственной обработки.',
-      bullets: facts.evidenceItems.length > 0 ? facts.evidenceItems.slice(0, 4) : [
-        'Лиды выросли с 310 до 470 (+52%), оплаты остались на уровне 40–45.',
-        'Время реакции выросло с 4,2 до 10,2 часов при норме 2 часа.',
-        'Потеряно без контакта: 65 лидов в январе, 190 в июне — рост в 3 раза.',
-        'Выручка падает при росте трафика — верный признак внутреннего ограничения.',
-      ],
-      note: 'Смысл доказательства в одном: вход растёт быстрее, чем система умеет его переваривать. Это цифровой признак внутреннего ограничения.',
-      actionText: 'Замерить время реакции и потери за нормативное время. Это подтверждает или опровергает гипотезу без дополнительных данных.',
+      note: 'Это не просто “мало маркетинга”. Это системная история про одно узкое место, через которое проходят почти все решения о росте.',
+      actionText: 'Это ограничение системы, потому что почти каждый путь к росту проходит через один и тот же ресурс — внимание и решения собственника.',
     },
     {
       id: 'donot',
-      title: 'Что нельзя оптимизировать сейчас',
-      kicker: 'Где улучшения не дадут результата',
+      title: 'Что не надо оптимизировать сейчас',
+      kicker: 'Что не трогать первым',
       tone: 'amber',
       icon: AlertTriangle,
-      value: 'Не масштабировать трафик, пока входящий этап перегружен',
-      support: 'Больше лидов сейчас увеличит очередь, а не результат.',
-      statusLabel: 'Важно',
+      value: 'Не запускать новый продукт, не плодить каналы и не нанимать под хаос',
+      support: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку быстрее, чем результат.',
+      statusLabel: 'Стоп-лист',
       detailTitle: 'Что не надо оптимизировать сейчас',
-      detailLead: 'Самая дорогая ошибка в такой ситуации — улучшать участки, которые не ограничивают систему. Это создаёт активность и красивые локальные метрики, но не создаёт сопоставимого роста денег.',
+      detailLead: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку. Бизнес становится активнее, но не обязательно прибыльнее.',
       bullets: facts.doNotOptimize.length > 0 ? facts.doNotOptimize.slice(0, 5) : [
-        'Не увеличивать рекламный бюджет вслепую: новые лиды увеличат очередь, не оплаты.',
-        'Не нанимать продажников: они не перегружены и не являются ограничением.',
-        'Не менять продукт или пакеты как первую меру: проблема в процессе, не в продукте.',
-        'Не требовать «просто быстрее отвечать»: без изменения процесса это не работает.',
-        'Не оптимизировать CRM без изменения SLA: инструмент без процесса не снимает очередь.',
+        'Не запускать ещё один продукт, пока действующие направления не сведены к одному понятному потоку денег.',
+        'Не добавлять ещё один канал контента ради ощущения движения: новый контур привлечения не лечит ограничение в фокусе и продажах.',
+        'Не нанимать под хаос, если роли, приоритеты и контур продаж всё ещё не определены.',
+        'Не делать новую матрицу приоритетов, если главная проблема в отсутствии жёсткого отказа от лишнего.',
+        'Не резать расходы вместо роста потока денег: это может снять давление, но не заменит рост продаж и денежных поступлений.',
       ],
-      note: 'Если улучшение не разгружает bottleneck, оно почти всегда увеличивает занятость быстрее, чем увеличивает результат.',
-      actionText: 'Сначала снять главное ограничение, только потом думать о масштабировании остального.',
+      note: 'Локальная оптимизация здесь опасна тем, что усиливает незавершённое: проектов и активности больше, а денег не больше.',
+      actionText: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку. Бизнес становится активнее, но не обязательно прибыльнее.',
     },
     {
       id: 'exploit',
       title: 'Как снять ограничение',
-      kicker: 'Использовать, затем расширить',
+      kicker: 'Использовать → подчинить → расширить',
       tone: 'green',
       icon: Zap,
-      value: 'Сначала использовать текущую мощность, затем расширять её',
-      support: 'Шаг 1: очистить ограничение от лишней работы. Шаг 2: расширить после очистки.',
-      statusLabel: '2 шага',
+      value: 'Сначала очистить фокус, потом подчинить систему и только после этого расширять',
+      support: 'Центральный блок отчёта: главное не добавить ресурсы в хаос, а выбрать один поток денег и выстроить вокруг него систему.',
+      statusLabel: 'Подтверждено',
       detailTitle: 'Как снять ограничение',
-      detailLead: 'Снять ограничение — не значит сразу добавить людей или инструменты. Сначала нужно заставить текущую мощность работать на результат, а не тратиться на хаос, переключения и просроченные лиды. Только потом расширение начинает приносить деньги, а не закреплять беспорядок.',
-      bullets: facts.exploitActions.length > 0 ? facts.exploitActions.slice(0, 5) : [
-        'Ввести SLA первого ответа: 15 минут рабочего времени.',
-        'Лид не может быть без статуса дольше 30 минут.',
-        'Приоритизировать лиды по источнику — лучшие к сильным менеджерам.',
-        'Убрать ручную рутину с менеджеров входящих: автоматизировать статусы.',
-        'Ввести ежедневный контроль «лид без статуса».',
+      detailLead: 'Сначала использовать и очистить ограничение. Только потом расширять. Иначе расширение просто закрепит хаос.',
+      bullets: facts.evidenceItems.length > 0 ? facts.evidenceItems.slice(0, 4) : [
+        'Использовать ограничение: на 30 дней убрать с собственника всё, что не двигает выбранный поток денег, и перестать запускать новые гипотезы.',
+        'Подчинить систему: команда, контент, продукт и операционные задачи должны работать вокруг одного выбранного направления. Всё остальное уходит в backlog.',
+        'Расширить ограничение: после очистки фокуса делегировать операционку, закрепить роли с партнёром и выделить ответственного за продажи или систему контента.',
+        'Не наоборот: не нанимать, не запускать и не автоматизировать хаос до того, как выбран главный поток денег.',
       ],
-      note: 'Правильная последовательность здесь критична: сначала очистить ограничение, затем расширять. Иначе расширение только добавит ресурсы в тот же самый хаос.',
-      actionText: facts.exploitActions[0] ?? 'Первые 7 дней — только замеры и SLA. Ни найма, ни новых инструментов до подтверждения ограничения.',
+      note: 'Логика здесь принципиальна: сначала защитить ограничение от расфокуса, затем построить вокруг него ритм команды, и только после этого добавлять людей или процессы.',
+      actionText: 'На 30 дней убрать с собственника всё, что не двигает выбранный поток денег. Не начинать новые гипотезы. Не переключаться между направлениями. Время собственника направить на продажи, упаковку оффера и решения, которые дают поток денег.',
     },
     {
       id: 'actions',
-      title: 'План действий',
-      kicker: '7 / 14 / 30 дней',
+      title: 'Первые действия',
+      kicker: '48 часов / 7 дней / 14 дней',
       tone: 'indigo',
       icon: CheckCircle2,
-      value: 'Сначала подтвердить ограничение, потом разгрузить входящий поток, затем масштабировать',
-      support: 'Порядок действий важнее количества инициатив.',
+      value: 'Сначала выбрать один поток денег, потом заморозить лишнее и запустить один управляемый цикл продаж',
+      support: 'Короткий план нужен не для активности, а для того, чтобы быстро проверить гипотезу ограничения на реальном бизнесе.',
       statusLabel: 'По шагам',
-      detailTitle: 'План действий',
-      detailLead: 'Сильный план в логике ограничений — это не набор параллельных инициатив. Его задача — задать правильную очередность: сначала доказать, где именно система теряет пропускную способность, затем быстро убрать лишнюю нагрузку с ограничения, и только после этого расширять мощность и искать следующее узкое место.',
+      detailTitle: 'Первые действия',
+      detailLead: 'Порядок действий здесь важнее количества задач. Сначала нужен выбор одного потока денег, потом жёсткий стоп-лист по лишнему и только потом — проверка, что продажи реально двинулись.',
       bullets: [
-        facts.actionPlan7[0] ? `7 дней: ${facts.actionPlan7[0]}` : '7 дней: замерить время реакции и посчитать лиды без контакта за 2 часа.',
-        facts.actionPlan14[0] ? `14 дней: ${facts.actionPlan14[0]}` : '14 дней: ввести SLA и настроить авто-напоминания.',
-        facts.actionPlan30[0] ? `30 дней: ${facts.actionPlan30[0]}` : '30 дней: добавить координатора и проверить рост диагностик.',
+        facts.actionPlan7[0] ? `48 часов: ${facts.actionPlan7[0]}` : '48 часов: выбрать один поток денег и временно заморозить новые инициативы.',
+        facts.actionPlan14[0] ? `7 дней: ${facts.actionPlan14[0]}` : '7 дней: собрать всё незавершённое и разделить его на деньги сейчас, деньги в 30 дней и заморозку.',
+        facts.actionPlan30[0] ? `14 дней: ${facts.actionPlan30[0]}` : '14 дней: запустить один управляемый цикл продаж по выбранному направлению.',
       ],
-      note: 'Порядок здесь важнее количества задач: преждевременный найм, новый трафик или масштабирование до очистки ограничения только закрепят проблему.',
-      actionText: facts.actions[0] ?? 'За 7 дней: замерить очередь и ввести ежедневный контроль. Ни найма, ни новых инструментов до подтверждения ограничения.',
+      note: 'Если после этих шагов не стало понятнее, где деньги и что тормозит рост, значит гипотезу ограничения нужно пересобрать, а не наращивать активность.',
+      actionText: 'За ближайшие две недели должно стать видно три вещи: какой поток денег главный, какие проекты нужно заморозить и может ли выбранное направление дать измеримые продажи без нового хаоса.',
     },
   ]
 }
@@ -2289,20 +2251,35 @@ function CardPreview({
         return (
           <div>
             <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
-              <MetricChip label="Поток / мес" value={`${goldrattFacts.leadVolume}`} tone="slate" />
-              <MetricChip label="Обработано" value={`${goldrattFacts.processedVolume}`} tone="blue" />
-              <MetricChip label="Застревает" value={`${goldrattFacts.stuckLeads}`} tone="red" />
-              <MetricChip label="Реакция" value={`${goldrattFacts.reactionTime} ч`} tone="amber" />
-              <MetricChip label="Этап / команда" value={`${goldrattFacts.processRows.find((row) => row.isBottleneck)?.load ?? goldrattFacts.managerLoad}% / ${goldrattFacts.managerLoad}%`} tone="red" />
-              <MetricChip label="Потери" value={formatCurrency(goldrattFacts.lateContactLoss, true)} tone="amber" />
+              {goldrattFacts.actualMarginLabel && <MetricChip label="Факт" value={goldrattFacts.actualMarginLabel} tone="amber" />}
+              {goldrattFacts.targetMarginLabel && <MetricChip label="Цель" value={goldrattFacts.targetMarginLabel} tone="blue" />}
+              {goldrattFacts.teamLabel && <MetricChip label="Команда" value={goldrattFacts.teamLabel} tone="slate" />}
+              <MetricChip label="Симптом" value="Заявки просели" tone="red" />
+              <MetricChip label="Роль собственника" value="Стратегия + операционка" tone="indigo" />
+              <MetricChip label="Фон" value="Много гипотез" tone="amber" />
             </div>
             <GoldrattConstraintPreview facts={goldrattFacts} />
           </div>
         )
-      case 'flow':
-        return <DetailedFlowChart stages={goldrattFacts.processRows} />
       case 'evidence':
-        return <GoldrattTrendChart data={goldrattFacts.trendRows} />
+        return (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {goldrattFacts.evidenceItems.slice(0, 4).map((item, index) => {
+              const [title, ...rest] = item.split(/[:—-]\s+/)
+              const body = rest.join(' — ') || item
+              return (
+                <div key={`${item}-${index}`} className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>
+                    {rest.length > 0 ? title : `Сигнал ${index + 1}`}
+                  </p>
+                  <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
+                    {body}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        )
       case 'donot':
         return (
           <div>
@@ -2312,14 +2289,26 @@ function CardPreview({
         )
       case 'exploit':
         return (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border p-3" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Использовать</p>
-              <BulletPreview items={goldrattFacts.exploitActions.slice(0, 3)} />
+          <div className="space-y-3">
+            <div className="grid gap-3 lg:grid-cols-3">
+              <div className="rounded-2xl border p-3" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Использовать ограничение</p>
+                <BulletPreview items={goldrattFacts.exploitActions.slice(0, 3)} />
+              </div>
+              <div className="rounded-2xl border p-3" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Подчинить систему</p>
+                <BulletPreview items={goldrattFacts.subordinateActions.slice(0, 3)} />
+              </div>
+              <div className="rounded-2xl border p-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить ограничение</p>
+                <BulletPreview items={goldrattFacts.elevateActions.slice(0, 3)} />
+              </div>
             </div>
-            <div className="rounded-2xl border p-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить</p>
-              <BulletPreview items={goldrattFacts.elevateActions.slice(0, 3)} />
+            <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#92400E' }}>Не наоборот</p>
+              <p className="mt-1 text-sm leading-snug" style={{ color: '#78350F' }}>
+                Не нанимать, не запускать и не автоматизировать хаос до того, как выбран главный поток денег.
+              </p>
             </div>
           </div>
         )
@@ -2767,21 +2756,31 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
   )
 }
 
+const GOLDRATT_LEGACY_DEV_COMPONENTS = [
+  parseGoldrattTables,
+  parseFlowStages,
+  extractBulletsAfterHeading,
+  DetailedFlowChart,
+  GoldrattTrendChart,
+]
+void GOLDRATT_LEGACY_DEV_COMPONENTS
+
 function GoldrattConstraintPreview({ facts }: { facts: GoldrattFacts }) {
+  void facts
   return (
     <div className="mt-2 grid gap-2 text-[11px] sm:grid-cols-3">
-      <MetricChip label="Вход" value={`${facts.leadVolume} лидов`} tone="slate" />
-      <MetricChip label="Проходит дальше" value={`${facts.processedVolume} заявок`} tone="blue" />
-      <MetricChip label="Копится в очереди" value={`${facts.stuckLeads} лидов`} tone="red" />
+      <MetricChip label="Проблема" value="Фокус распылён" tone="red" />
+      <MetricChip label="Продажи" value="Не стали системой" tone="amber" />
+      <MetricChip label="Управление" value="Собственник в центре" tone="indigo" />
     </div>
   )
 }
 
 function GoldrattDoNotGrid() {
   const items = [
-    ['Больше лидов', 'очередь перед первичным контактом растёт'],
-    ['Больше людей в продажах', 'не убирает ручную рутину и сбои на входе'],
-    ['Новый продукт', 'не ускоряет обработку уже входящих заявок'],
+    ['Ещё один продукт', 'добавляет новый незавершённый контур вместо продаж'],
+    ['Ещё один канал', 'расширяет активность до выбора главного потока денег'],
+    ['Найм под хаос', 'масштабирует перегрузку, а не результат'],
   ]
 
   return (
@@ -2799,40 +2798,40 @@ function GoldrattDoNotGrid() {
 function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
   const steps = [
     {
-      window: '7 дней',
+      window: '48 часов',
       color: '#EEF2FF',
       textColor: '#4338CA',
-      goal: 'Подтвердить ограничение и сделать очередь видимой.',
+      goal: 'Выбрать один поток денег и прекратить открывать новые гипотезы.',
       items: facts.actionPlan7.length > 0 ? facts.actionPlan7 : [
-        'Замерить очередь перед узким этапом',
-        'Ввести чек-лист входной заявки',
-        'Убрать явно неподходящие входы из очереди',
+        'Выбрать одно направление, которое должно дать деньги в ближайшие 30 дней',
+        'Временно остановить запуск новых инициатив',
+        'Зафиксировать, что именно двигает продажи по выбранному направлению',
       ],
-      success: 'Понятно, где и когда возникает очередь. Первичный контакт подтверждён или опровергнут как ограничение.',
+      success: 'Понятно, какой поток денег главный и чему подчиняются ближайшие решения.',
+    },
+    {
+      window: '7 дней',
+      color: '#F0FDF4',
+      textColor: '#166534',
+      goal: 'Разобрать всё незавершённое и убрать то, что не ведёт к деньгам.',
+      items: facts.actionPlan14.length > 0 ? facts.actionPlan14 : [
+        'Собрать список всех незавершённых проектов и гипотез',
+        'Разделить их на: деньги сейчас, деньги в 30 дней, заморозить',
+        'Оставить в работе только то, что помогает выбранному потоку денег',
+      ],
+      success: 'Количество параллельных решений уменьшилось, а фокус команды стал понятнее.',
     },
     {
       window: '14 дней',
-      color: '#F0FDF4',
-      textColor: '#166534',
-      goal: 'Использовать текущую мощность без найма и без нового хаоса.',
-      items: facts.actionPlan14.length > 0 ? facts.actionPlan14 : [
-        'Разделить первичный фильтр и экспертную оценку',
-        'Настроить приоритеты по срочности',
-        'Ввести правило фокуса: 1–2 задачи в потоке',
-      ],
-      success: 'Доля обработанных за 2 часа растёт, очередь и средняя реакция снижаются.',
-    },
-    {
-      window: '30 дней',
       color: '#F8FAFC',
       textColor: '#475569',
-      goal: 'Расширить ограничение и увидеть, не стало ли следующим узким местом внедрение.',
+      goal: 'Запустить один управляемый цикл продаж по выбранному направлению.',
       items: facts.actionPlan30.length > 0 ? facts.actionPlan30 : [
-        'Добавить ресурс или автоматизацию на узкий этап',
-        'Внедрить scoring входящих по профилю',
-        'Сравнить пропускную способность до и после, найти следующее ограничение',
+        'Собрать оффер и короткий цикл продаж по одному направлению',
+        'Сделать 20–30 целевых касаний',
+        'Зафиксировать конверсию и решить, масштабировать ли именно этот поток денег',
       ],
-      success: 'Больше лидов проходит первичный контакт, диагностики и оплаты растут, следующее ограничение видно в потоке.',
+      success: 'Появились измеримые продажи или заявки по выбранному направлению, а не просто очередная активность.',
     },
   ]
 
@@ -2870,17 +2869,17 @@ function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
 
 function GoldrattLimitationsPanel({ facts }: { facts: GoldrattFacts }) {
   const exact = [
-    'Структура потока, место скопления очереди и симптомы ограничения — надёжные наблюдения.',
-    'Логика Голдратта применима: ограничение определяется по симптомам, а не произвольно.',
+    'Контекст бизнеса уже позволяет сформулировать одно главное ограничение и не распыляться на список симптомов.',
+    'Логика Голдратта здесь применима: ограничение определяется по тому, где система теряет поток денег, а не по самой громкой жалобе.',
   ]
   const missing = [
-    'Без замеров фактического времени каждого этапа нельзя точно подтвердить ограничение количественно.',
-    'Без финансовых данных нельзя оценить денежный эффект от снятия ограничения.',
+    'Без цифр по продажам и каналам нельзя делать жёсткий вывод, что проблема только в маркетинге или только в оффере.',
+    'Без списка проектов, ролей и реальной загрузки нельзя безопасно нанимать, расширять команду или делегировать наугад.',
   ]
   const next = facts.limitations.length > 0 ? facts.limitations : [
-    'Замеры времени каждого этапа по каждому элементу потока.',
-    'Загрузка сотрудников на критичном этапе.',
-    'P&L за последние 3–6 месяцев для финансовой версии анализа.',
+    'P&L или управленческие финансы по направлениям.',
+    'Список текущих проектов, гипотез и ответственных за них.',
+    'Данные по заявкам, продажам и конверсии по одному выбранному направлению.',
   ]
 
   return (
@@ -2977,38 +2976,29 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
     case 'constraint':
       return {
         title: 'Что делать первым',
-        main: 'Не увеличивать рекламный бюджет, пока не разгружен входящий поток',
-        text: 'Спрос уже есть, но первый операционный этап не успевает превращать его в диагностики и оплаты. Дополнительная реклама сейчас масштабирует очередь, просроченные касания и потерянную выручку. Первый шаг — зафиксировать регламент реакции, перераспределить входящие заявки и убрать ручную рутину с менеджеров.',
+        main: 'Не запускать новые гипотезы, пока не выбран один канал потока денег',
+        text: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один поток денег на ближайшие 30 дней и подчинить ему контент, продажи, продукт и командные решения.',
         icon: Target,
         tone: 'red',
-        tags: ['SLA реакции', 'Очередь', 'Менеджеры', 'Не лить трафик'],
-      }
-    case 'flow':
-      return {
-        title: 'Что показывает поток',
-        main: 'Проблема не в количестве лидов, а в пропускной способности входящего этапа',
-        text: 'Самая дорогая работа уже сделана: спрос приведён. Поток сужается дальше не из-за качества лидов, а из-за того, что система медленно берёт их в работу. Поэтому следующие этапы выглядят недогруженными не потому, что они сильные, а потому что до них не доходит нормальный объём качественно обработанных заявок.',
-        icon: Activity,
-        tone: 'indigo',
-        tags: ['Очередь до этапа', 'Потеря скорости', 'Недополученный поток'],
+        tags: ['Один поток денег', 'Фокус', 'Стоп новым гипотезам'],
       }
     case 'evidence':
       return {
-        title: 'Почему это не маркетинг',
-        main: 'Спрос есть, но система не переваривает входящий поток',
-        text: 'Если бы проблема была в маркетинге, рост лидов хотя бы частично поднимал бы диагностики и оплаты. Здесь происходит обратное: вход растёт, реакция ухудшается, а деньги стоят. Ошибка сейчас — продолжать спорить о качестве трафика, пока сам процесс обработки не доказал, что умеет быстро переваривать уже существующий спрос.',
-        icon: BarChart3,
-        tone: 'amber',
-        tags: ['Спрос есть', 'Реакция падает', 'Оплаты стоят'],
+        title: 'Управленческий вывод',
+        main: 'Это ограничение системы, а не просто слабый маркетинг или отдельный хаос в задачах',
+        text: 'Симптомы выглядят разными, но почти каждый путь к росту упирается в один и тот же ресурс — внимание и решения собственника. Пока этот ресурс не защищён и не подчинён одному потоку денег, бизнес будет производить больше движения, чем результата.',
+        icon: Activity,
+        tone: 'indigo',
+        tags: ['Один корень', 'Симптомы разные', 'Фокус собственника'],
       }
     case 'donot':
       return {
         title: 'Почему это опасно',
-        main: 'Улучшение неограниченных этапов создаст больше работы, но не больше результата',
-        text: 'Если усиливать маркетинг, продукт или последующие этапы до разгрузки первичного контакта, команда станет занятее, но денег почти не прибавится. Узкое место останется на входе, а вся дополнительная активность превратится в незавершённую работу: больше лидов без ответа, больше просроченных касаний и ложное ощущение прогресса.',
+        main: 'Пока не выбран главный поток денег, улучшения создают больше активности, но не больше прибыли',
+        text: 'Новый продукт, новый канал, новый найм или очередная система приоритетов легко создают ощущение движения. Но если ограничение сидит в фокусе собственника и в несобранной системе продаж, всё это только увеличивает замороженные ресурсы. Бизнес становится занятее, а денег почти не прибавляется.',
         icon: AlertTriangle,
         tone: 'amber',
-        tags: ['Не лить трафик', 'Не плодить очередь', 'Не лечить не то'],
+        tags: ['Не плодить незавершённое', 'Не нанимать под хаос', 'Не лечить не то'],
       }
     default:
       return null
@@ -3202,16 +3192,16 @@ function GoldrattInfoBlock({ facts }: { facts: GoldrattFacts | null }) {
             Что важно знать перед чтением
           </h2>
           <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
-            Это операционный разбор по Теории ограничений Голдратта. Он показывает, где поток системы тормозится сильнее всего, какие этапы недополучают вход и какие решения сейчас только увеличат очередь.
+            Это не BI-отчёт по идеальной CRM и не попытка оптимизировать всё сразу. Разбор по Голдратту ищет одно главное ограничение бизнеса и показывает, как снять его через фокус, продажи, роли и порядок действий.
           </p>
         </div>
       </div>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Источник', value: facts?.leadVolume ? `Поток ${facts.leadVolume} лидов/мес и 4 операционные таблицы` : 'Операционные данные по этапам и команде', tone: 'blue' as Tone },
-          { label: 'Что считаем точно', value: 'Очереди, время ожидания, загрузку команды, потерянный поток и узкий этап.', tone: 'indigo' as Tone },
-          { label: 'Следующий риск', value: facts?.futureConstraint ? `После снятия главного ограничения следующим может стать: ${facts.futureConstraint}.` : 'После снятия первого ограничения система покажет следующее узкое место.', tone: 'amber' as Tone },
-          { label: 'Чего нет', value: 'Нет полного финансового разреза и причин отказов по каждому лиду, поэтому денежный эффект оценивается ориентировочно.', tone: 'slate' as Tone },
+          { label: 'Основа вывода', value: 'Контекст предпринимателя, описание боли и дополнительные документы, если они приложены.', tone: 'blue' as Tone },
+          { label: 'Что ищем', value: 'Одно главное ограничение системы, а не длинный список проблем.', tone: 'indigo' as Tone },
+          { label: 'Главный фокус', value: 'Не что улучшить вообще, а что сейчас мешает потоку денег расти быстрее.', tone: 'amber' as Tone },
+          { label: 'Уровень уверенности', value: `${facts?.confidenceLabel ?? 'средний'} — вывод опирается на контекст, а не на полную CRM-выгрузку.`, tone: 'slate' as Tone },
         ].map((item) => (
           <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>{item.label}</p>
@@ -3258,17 +3248,20 @@ function GoldrattMethodologyBlock() {
 }
 
 function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
-  const [activeTab, setActiveTab] = useState<'flow' | 'trend' | 'team' | 'loss'>('flow')
-  const [showScoreInfo, setShowScoreInfo] = useState(false)
   if (!facts) return null
 
-  const fileName = facts.sourceMetadata['Источник'] ?? facts.sourceMetadata.Source ?? 'Источник не записан'
-  const sourceStructure = '4 связанные таблицы'
-  const sourceLabel = '4 таблицы источника'
-  const qualityScore = facts.sourceMetadata['Quality score'] ?? '—'
+  const fileName = facts.sourceMetadata['Источник'] ?? 'Контекст предпринимателя'
+  const structure = facts.sourceMetadata['Структура'] ?? 'Ответы на вопросы + дополнительные документы'
   const period = facts.sourceMetadata['Период'] ?? 'Не указан'
-  const tabClass = (active: boolean) =>
-    `rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${active ? '' : 'hover:bg-slate-50'}`
+  const sourceSummary = facts.sourceMetadata['Что приложено'] ?? 'Описание бизнеса, текущая боль, роли, продажи и проекты'
+  const cards = [
+    ['P&L / финансы', 'Чтобы увидеть, как ограничение связано с прибылью, маржой и личной целью собственника.'],
+    ['CRM / воронка продаж', 'Чтобы проверить, действительно ли слабое место сидит в продажах, а не только в ощущении собственника.'],
+    ['Список текущих проектов', 'Чтобы отделить направления, которые дают поток денег, от замороженных ресурсов.'],
+    ['Описание процесса', 'Чтобы понять, где система реально тормозит: в продажах, производстве, согласовании или у собственника.'],
+    ['Оргструктура / роли', 'Чтобы увидеть, кто держит критические решения и где собственник сам становится ограничением.'],
+    ['Таблица задач или загрузки команды', 'Чтобы проверить, какие инициативы создают хаос и что уже перегружено операционно.'],
+  ] as const
 
   return (
     <section className="mt-4 overflow-hidden rounded-3xl border" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
@@ -3276,55 +3269,31 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-3xl">
             <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
-              Проверка исходных данных
+              Дополнительный контекст
             </p>
             <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>
-              Данные, использованные для анализа
+              Что можно приложить для более точного анализа
             </h2>
             <p className="mt-1 text-sm leading-snug" style={{ color: TEXT2 }}>
-              Это исходные операционные таблицы, на которых построен Goldratt-разбор: карта потока, динамика по месяцам, загрузка команды и экономика потерь.
+              Для поиска ограничения не всегда нужна идеальная таблица. Часто достаточно хорошего описания бизнеса и текущей боли. Но точность выше, если приложить документы, которые помогают отделить ощущение от подтверждённого ограничения.
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-1.5">
-              <StatusPill tone="blue">Оценка качества: {qualityScore}</StatusPill>
-              <button
-                type="button"
-                onClick={() => setShowScoreInfo((value) => !value)}
-                className="flex h-5 w-5 items-center justify-center rounded-full border transition-colors"
-                style={{ borderColor: '#BFDBFE', background: showScoreInfo ? '#DBEAFE' : '#EFF6FF', color: PRIMARY_BLUE }}
-                title="Что означает оценка качества"
-                aria-expanded={showScoreInfo}
-                aria-label="Подробнее об оценке качества данных"
-              >
-                <Info className="h-3 w-3" />
-              </button>
-            </div>
-            <span className="text-[10px]" style={{ color: TEXT3 }}>пригодность данных для анализа ограничения</span>
+            <StatusPill tone="blue">Уровень уверенности: {facts.confidenceLabel}</StatusPill>
+            <span className="max-w-[280px] text-right text-[10px] leading-relaxed" style={{ color: TEXT3 }}>
+              {facts.confidenceNote}
+            </span>
           </div>
         </div>
-        {showScoreInfo && (
-          <div className="mt-3 rounded-2xl border px-3 py-2.5 text-[11px] leading-relaxed" style={{ background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}>
-            <span className="font-semibold">88/100 — это не оценка бизнеса.</span> Это оценка пригодности входных данных именно для разбора ограничения. Здесь уже есть карта этапов, вход и выход по потоку, ожидание, загрузка команды и динамика по месяцам, поэтому вероятное ограничение видно достаточно уверенно. До 100 не хватает полного финансового разреза по этапам, причин отказов по каждому лиду и точной связи между задержкой и потерянной выручкой.
-            <div className="mt-2 grid gap-1 sm:grid-cols-2">
-              <span>+ карта потока по этапам</span>
-              <span>+ динамика по месяцам</span>
-              <span>+ загрузка команды</span>
-              <span>+ экономика потерь</span>
-              <span>− нет истории по каждой заявке</span>
-              <span>− нет причин отказов по каждой заявке</span>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="space-y-3 px-4 py-3.5 sm:px-5">
         <div className="grid gap-2 text-xs sm:grid-cols-4">
           {[
-            ['Файл', fileName],
-            ['Структура', sourceStructure],
+            ['Файл / основа', fileName],
+            ['Структура', structure],
             ['Период', period],
-            ['Источник', sourceLabel],
+            ['Контекст', sourceSummary],
           ].map(([label, value]) => (
             <div key={label} className="min-w-0 overflow-hidden rounded-2xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
               <p className="font-semibold" style={{ color: TEXT3 }}>{label}</p>
@@ -3333,142 +3302,14 @@ function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {['Карта потока', 'Динамика', 'Команда', 'Потери'].map((chip) => (
-            <span key={chip} className="rounded-full border px-3 py-1 text-[11px] font-semibold" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF', color: TEXT2 }}>
-              {chip}
-            </span>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {cards.map(([title, text]) => (
+            <div key={title} className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
+              <p className="text-sm font-semibold" style={{ color: TEXT }}>{title}</p>
+              <p className="mt-1 text-sm leading-relaxed" style={{ color: TEXT2 }}>{text}</p>
+            </div>
           ))}
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          {[
-            ['flow', 'Поток по этапам'],
-            ['trend', 'Динамика по месяцам'],
-            ['team', 'Загрузка команды'],
-            ['loss', 'Экономика потерь'],
-          ].map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setActiveTab(id as 'flow' | 'trend' | 'team' | 'loss')}
-              className={tabClass(activeTab === id)}
-              style={{
-                borderColor: activeTab === id ? '#BFDBFE' : BORDER,
-                background: activeTab === id ? '#EFF6FF' : '#FFFFFF',
-                color: activeTab === id ? PRIMARY_BLUE : TEXT2,
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab === 'flow' && (
-          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
-            <table className="min-w-[920px] w-full border-collapse text-xs">
-              <thead style={{ background: '#F8FAFC' }}>
-                <tr>
-                  {['Этап', 'Вход/мес', 'Выход/мес', 'Конверсия', 'Ожидание', 'Норма', 'Загрузка', 'Очередь'].map((head) => (
-                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Этап' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {facts.processRows.map((row) => (
-                  <tr key={row.label} className="transition-colors hover:bg-slate-50" style={{ background: row.isBottleneck ? '#FFF7F7' : undefined }}>
-                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: row.isBottleneck ? '#B91C1C' : TEXT, background: row.isBottleneck ? '#FFF7F7' : CARD }}>{row.label}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.input}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.output}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.conversion}%</td>
-                    <td className="border-b px-3 py-2 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.wait}</td>
-                    <td className="border-b px-3 py-2 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT3 }}>{row.norm}</td>
-                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: row.load > 110 ? '#B91C1C' : TEXT }}>{row.load}%</td>
-                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: row.queue > 50 ? '#B91C1C' : TEXT }}>{row.queue}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {activeTab === 'trend' && (
-          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
-            <table className="min-w-[920px] w-full border-collapse text-xs">
-              <thead style={{ background: '#F8FAFC' }}>
-                <tr>
-                  {['Месяц', 'Лиды', 'Обработано за 2 ч', 'Диагностики', 'Оплаты', 'Выручка', 'Потерянные лиды', 'Среднее время реакции'].map((head) => (
-                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Месяц' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {facts.trendRows.map((row) => (
-                  <tr key={row.month} className="transition-colors hover:bg-slate-50">
-                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT, background: CARD }}>{row.month}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.leads}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.processed}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.diagnostics}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.payments}</td>
-                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{formatCurrency(row.revenue, true)}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.lostLeads}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.reaction} ч</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {activeTab === 'team' && (
-          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
-            <table className="min-w-[820px] w-full border-collapse text-xs">
-              <thead style={{ background: '#F8FAFC' }}>
-                <tr>
-                  {['Роль', 'Людей', 'Норма задач/мес', 'Факт задач/мес', 'Загрузка', 'Риск'].map((head) => (
-                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Роль' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {facts.teamRows.map((row) => (
-                  <tr key={row.role} className="transition-colors hover:bg-slate-50">
-                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT, background: CARD }}>{row.role}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.people}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.normTasks}</td>
-                    <td className="border-b px-3 py-2 text-right tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.actualTasks}</td>
-                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: row.load >= 120 ? '#B91C1C' : row.load >= 100 ? '#B45309' : '#047857' }}>{row.load}%</td>
-                    <td className="border-b px-3 py-2" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.risk}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {activeTab === 'loss' && (
-          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER }}>
-            <table className="min-w-[840px] w-full border-collapse text-xs">
-              <thead style={{ background: '#F8FAFC' }}>
-                <tr>
-                  {['Причина потерь', 'Объём', 'Потенциальная выручка', 'Комментарий'].map((head) => (
-                    <th key={head} className={`border-b px-3 py-2 text-left font-semibold ${head === 'Причина потерь' ? 'sticky left-0 z-10' : ''}`} style={{ borderColor: BORDER_SOFT, color: TEXT2, background: '#F8FAFC' }}>{head}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {facts.lossRows.map((row) => (
-                  <tr key={row.reason} className="transition-colors hover:bg-slate-50">
-                    <td className="sticky left-0 z-10 border-b px-3 py-2 font-medium" style={{ borderColor: BORDER_SOFT, color: TEXT, background: CARD }}>{row.reason}</td>
-                    <td className="border-b px-3 py-2 text-right" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.volume}</td>
-                    <td className="border-b px-3 py-2 text-right font-medium tabular-nums" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{formatCurrency(row.revenue, true)}</td>
-                    <td className="border-b px-3 py-2" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{row.comment}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </section>
   )
@@ -3493,7 +3334,7 @@ function GoldrattDashboard({
   }
 
   const byId = (id: string) => cards.find((card) => card.id === id) ?? null
-  const pairedIds = ['constraint', 'flow', 'evidence', 'donot'] as const
+  const pairedIds = ['constraint', 'evidence', 'donot'] as const
   const fullWidthIds = ['exploit', 'actions'] as const
 
   return (
@@ -3501,7 +3342,7 @@ function GoldrattDashboard({
       {pairedIds.map((id) => {
         const card = byId(id)
         if (!card) return null
-        const visualHeavy = id === 'flow' || id === 'evidence'
+        const visualHeavy = id === 'evidence'
         return (
           <div key={card.id} className={`grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] ${visualHeavy ? 'items-start' : 'items-stretch'}`}>
             <article

@@ -26,6 +26,7 @@ import type { AnalyzeFormFields, AgentType } from '@/lib/types'
 const PAGE_BG = '#F4F7FB'
 const CARD = '#FFFFFF'
 const BORDER = '#E2E8F0'
+const BORDER_SOFT = '#CBD5E1'
 const TEXT = '#0F172A'
 const TEXT2 = '#64748B'
 const INPUT_BG = '#FFFFFF'
@@ -57,6 +58,17 @@ const BASE_EMPTY: Omit<AnalyzeFormFields, 'agentType'> = {
   ownerDependency: '',
   unfinishedProjects: '',
   desiredResult: '',
+  businessAge: '',
+  partnersRoles: '',
+  currentProfit: '',
+  ownerFinancialGoal: '',
+  oneProblemToRemove: '',
+  triedResults: '',
+  ownerDailyRole: '',
+  ownerStrengthsWeaknesses: '',
+  planningHorizon: '',
+  competingPriorities: '',
+  highestImpactDecision: '',
 }
 
 const EMPTY_PNL: AnalyzeFormFields = { ...BASE_EMPTY, agentType: 'pnl' }
@@ -83,12 +95,37 @@ const PNL_TEST_FILL: Partial<AnalyzeFormFields> = {
 }
 
 const GOLDRATT_TEST_FILL: Partial<AnalyzeFormFields> = {
-  company: 'Консалтинг Пример',
+  company: 'ED Agency',
   businessType: 'Услуги',
   whatDoYouSell:
-    'Консалтинг по оптимизации бизнес-процессов для производственных компаний. Проекты от 3 до 6 месяцев, средний чек 800к–1.5М руб.',
-  bottleneckGuess: 'Собственник',
-  mainPain: `Бизнес работает, клиенты есть, но всё замыкается на мне. Участвую в каждой продаже, каждом проекте, каждом решении. Нанял двух консультантов — работают, но без меня ничего не закрывают. Хочу вырасти с 2 до 5 проектов параллельно, но физически не успеваю. Пробовали писать регламенты — не работает.`,
+    'Методологическое агентство полного цикла: курсы, обучающие программы, смысловая упаковка, лендинги, презентации, воронки, AI-решения, онбординг.',
+  whoIsCustomer: 'Эксперты, онлайн-школы, бизнесы, которым нужны образовательные продукты и AI-решения.',
+  businessAge: '4 года на рынке, команда около 10 человек.',
+  partnersRoles: 'Партнер Миша, доли прибыли примерно 70/30, роли разделены не до конца.',
+  currentRevenue: 'Выручка нестабильна, цель — держать бизнес в диапазоне, который даёт 650k лично собственнику.',
+  currentProfit: 'Личная точка выживания 300–350k в месяц. Чтобы забирать 350k, нужно около 500k чистой прибыли.',
+  currentMargin: '17,8%',
+  targetMargin: '22–25%',
+  ownerFinancialGoal: '650k в месяц к августу.',
+  mainPain:
+    'Заявки просели, конверсия в продажи — слабое место. Много параллельных проектов и гипотез, но нет ощущения, что система превращает это в стабильный поток денег.',
+  delaysQueues:
+    'Очередь не в CRM, а во внимании собственника: слишком много решений и направлений конкурируют за один и тот же фокус.',
+  ownerDependency:
+    'Когда Антон уходит в операционку, стратегия стоит. Продажи, продуктовые решения и часть роста всё ещё сильно завязаны на собственнике.',
+  oneProblemToRemove:
+    'Если убрать одну проблему, это был бы расфокус: выбрать один поток денег и подчинить ему всё остальное.',
+  unfinishedProjects:
+    'AI-продукты, YouTube, инструменты, отдельные гипотезы и незавершённые активы, которые съедают ресурс, но не дают стабильный поток денег.',
+  triedBefore:
+    'ICE, Эйзенхауэр, временные блоки, контент-маркетинг, калькулятор цены, Reels с AI-кейсами.',
+  triedResults:
+    'Инструменты приоритизации пробовали, но они не приживаются системно. Контент работает, но медленно. Продуктовая часть сильная, а системные продажи не стали стабильным каналом.',
+  ownerDailyRole: 'Стратегический и операционный CEO одновременно, плюс продуктолог.',
+  ownerStrengthsWeaknesses: 'Сильная сторона — методология и продукт. Слабее — продажи, маркетинг и удержание фокуса на одном направлении.',
+  planningHorizon: 'Ближайший квартал с фокусом на второе полугодие.',
+  competingPriorities: 'AI-решения, YouTube, упаковка, клиентские проекты, новые гипотезы и перестройка команды конкурируют за внимание.',
+  highestImpactDecision: 'Выбрать один главный поток денег на 30 дней и временно заморозить остальное.',
 }
 
 // ─── File extensions ───────────────────────────────────────────────────────────
@@ -352,12 +389,12 @@ const AGENT_CONFIG = {
     activeBorder: '#6EE7B7',
   },
   goldratt: {
-    badge: 'Goldratt / TOC',
-    title: 'Goldratt Agent',
+    badge: 'Голдратт / ограничения',
+    title: 'Анализ ограничения',
     subtitle: 'Поиск системного ограничения',
     cardDesc:
-      'Определяет главное системное ограничение по Теории ограничений: где застревает поток, что является шумом и что делать первым.',
-    cta: 'Найти бутылочное горлышко',
+      'Находит одно главное бутылочное горлышко по контексту предпринимателя и опциональным документам: где система тормозит, что не надо оптимизировать и как снять ограничение.',
+    cta: 'Запустить анализ ограничения',
     loadingTitle: 'Ищем ограничение',
     icon: Target,
     accent: '#7c3aed',
@@ -507,7 +544,15 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
       setPnlSheetStatus(analysis?.status ?? null)
       setPnlFileSource('file')
     } else {
-      setField('mainPain', text)
+      fillForm({
+        pnlText: text,
+        sourceFileName: name,
+        selectedSheet: analysis?.sheetName ?? '',
+        parsedRows: analysis ? String(analysis.nonEmptyRows) : '',
+        parsedColumns: analysis ? String(analysis.nonEmptyColumns) : '',
+        qualityScore: analysis ? String(analysis.qualityScore) : '',
+        qualityWarnings: analysis ? [...analysis.hardBlockReasons, ...analysis.warnings].join(' | ') : '',
+      })
       setGoldrattFileName(name)
     }
   }
@@ -527,7 +572,18 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
         qualityWarnings: '',
       })
     }
-    else setGoldrattFileName(null)
+    else {
+      setGoldrattFileName(null)
+      fillForm({
+        pnlText: '',
+        sourceFileName: '',
+        selectedSheet: '',
+        parsedRows: '',
+        parsedColumns: '',
+        qualityScore: '',
+        qualityWarnings: '',
+      })
+    }
   }
 
   function handleGoogleSheetsLoaded(text: string, name: string, analysis: SheetAnalysis) {
@@ -568,11 +624,10 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
       }
     } else {
       if (!form.company?.trim()) { setError('Укажите название компании или проекта.'); return }
-      if (!form.businessType?.trim()) { setError('Выберите тип бизнеса.'); return }
-      if (form.businessType === 'Другое' && !form.industry?.trim()) { setError('Укажите тип бизнеса или нишу.'); return }
-      if (!form.whatDoYouSell?.trim()) { setError('Опишите, что продаёт или производит компания.'); return }
-      if (!form.bottleneckGuess?.trim()) { setError('Выберите, где, по ощущению, узкое место.'); return }
-      if (!form.mainPain?.trim()) { setError('Опишите ситуацию в бизнесе.'); return }
+      if (!form.whatDoYouSell?.trim()) { setError('Опишите, чем занимается бизнес и что он делает для клиентов.'); return }
+      if (!form.mainPain?.trim()) { setError('Опишите главную боль: что мешает зарабатывать больше прямо сейчас.'); return }
+      if (!form.delaysQueues?.trim()) { setError('Опишите, где сейчас есть очередь, задержка или перегрузка.'); return }
+      if (!form.triedBefore?.trim()) { setError('Коротко напишите, что уже пробовали.'); return }
     }
 
     setLoading(true)
@@ -606,7 +661,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
             month: 'long',
             year: 'numeric',
           }),
-          mode: agent === 'pnl' ? 'P&L Analysis' : 'Goldratt / TOC',
+          mode: agent === 'pnl' ? 'P&L Analysis' : 'Голдратт / ограничения',
         })
         setSavedLocally(true)
         setErrorRequestId(data.requestId || null)
@@ -987,16 +1042,12 @@ const PNL_REPORT_SECTIONS = [
 ]
 
 const GOLDRATT_REPORT_SECTIONS = [
-  'Диагностика входных данных',
-  'Что важно знать',
   'Главное ограничение',
-  'Карта потока',
-  'Доказательства ограничения',
+  'Почему это именно оно',
   'Что нельзя оптимизировать сейчас',
-  'Как использовать ограничение',
-  'Как расширить ограничение',
-  'План действий',
-  'Ограничения анализа',
+  'Как снять ограничение',
+  'Первые действия',
+  'Что проверить дальше',
 ]
 
 function WhatYouGetCard({ cfg, agent }: { cfg: AgentCfg; agent: AgentType }) {
@@ -1152,15 +1203,17 @@ function FileUploadZone({
   const [selectedSheet, setSelectedSheet] = useState('')
 
   const title =
-    variant === 'pnl' ? 'Загрузите P&L или таблицу' : 'Загрузите описание бизнеса'
+    variant === 'pnl' ? 'Загрузите P&L или таблицу' : 'Прикрепите документ, если он помогает понять бизнес'
   const subtitle =
     variant === 'pnl'
       ? 'Подойдёт Excel-файл, выгрузка из Google Sheets или таблица, скопированная вручную.'
-      : 'Подойдёт заметка, транскрипт созвона, описание проблемы или таблица с наблюдениями.'
+      : 'Можно приложить P&L, CRM-выгрузку, таблицу проектов, описание процесса, финансовый отчёт или заметки.'
   const hint =
     variant === 'pnl'
       ? 'Если файл не читается, просто скопируйте таблицу и вставьте её ниже.'
-      : 'P&L сюда загружать не нужно. Для финансовых цифр используйте P&L Agent.'
+      : 'Это не обязательно. Анализ ограничения можно запустить только по ответам на вопросы.'
+  const variantTemplateUrl = variant === 'pnl' ? TEMPLATE_URL : GOLDRATT_TEMPLATE_URL
+  const variantTemplateLabel = variant === 'pnl' ? 'Скачать шаблон' : 'Скачать расширенный шаблон'
 
   async function processFile(file: File) {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
@@ -1278,7 +1331,7 @@ function FileUploadZone({
                   Проверьте данные перед анализом
                 </p>
                 <p className="mt-1 text-xs" style={{ color: TEXT2 }}>
-                  В анализ будет отправлена очищенная таблица.
+                  {variant === 'pnl' ? 'В анализ будет отправлена очищенная таблица.' : 'В анализ будет отправлен очищенный документ или таблица.'}
                 </p>
               </div>
               <span
@@ -1357,8 +1410,8 @@ function FileUploadZone({
               <button type="button" onClick={() => inputRef.current?.click()} className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
                 Выбрать другой лист
               </button>
-              <a href={TEMPLATE_URL} download className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
-                Скачать шаблон
+              <a href={variantTemplateUrl} download className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
+                {variantTemplateLabel}
               </a>
               <button type="button" onClick={onClearFile} className="rounded-lg border px-3 py-1.5 text-xs font-medium" style={{ borderColor: BORDER, color: TEXT }}>
                 Вставить вручную
@@ -1554,6 +1607,8 @@ function BottleneckPills({
     </div>
   )
 }
+
+void BottleneckPills
 
 // ─── Google Sheets import ─────────────────────────────────────────────────────
 
@@ -1961,6 +2016,22 @@ function PnlSection({
 function GoldrattSection({
   form, setField, fillForm, inputCls, inputStyle, focusStyle, cfg, fileName, onFileLoaded, onClearFile, onFillTest,
 }: SectionProps) {
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    business: true,
+    money: false,
+    bottleneck: true,
+    tried: false,
+    owner: false,
+    horizon: false,
+  })
+
+  const toggleGroup = (key: string) => {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const groupClass = 'rounded-2xl border bg-white'
+  const headerClass = 'flex w-full items-center justify-between gap-3 px-4 py-3 text-left'
+
   return (
     <>
       <div className="flex justify-end -mt-1">
@@ -1973,79 +2044,366 @@ function GoldrattSection({
           Вставить тестовое описание
         </button>
       </div>
+      <div
+        className="rounded-2xl border px-4 py-3.5 text-sm leading-relaxed"
+        style={{ background: '#FBFCFE', borderColor: BORDER, color: TEXT2 }}
+      >
+        <p className="text-sm font-semibold" style={{ color: TEXT }}>Контекст бизнеса для поиска ограничения</p>
+        <p className="mt-1.5">
+          Ответьте на базовые вопросы. Не нужно идеально — достаточно того, что знаете сейчас. Можно также прикрепить P&L, CRM-выгрузку, описание процесса или любой документ, который помогает понять бизнес.
+        </p>
+      </div>
 
-      {/* 1. Company */}
-      <Field
-        label="Компания / проект *"
-        value={form.company}
-        onChange={(v) => setField('company', v)}
-        placeholder="ООО «Ромашка» или название проекта"
-        inputCls={inputCls}
-        inputStyle={inputStyle}
-        focusStyle={focusStyle}
-      />
-
-      {/* 2. Business type */}
-      <div>
-        <label className="block text-sm mb-1.5" style={{ color: TEXT2 }}>
-          Тип бизнеса *
-        </label>
-        <select
-          value={form.businessType}
-          onChange={(e) => {
-            const t = e.target.value
-            fillForm({ businessType: t, industry: t !== 'Другое' ? '' : form.industry })
-          }}
-          className={inputCls}
-          style={inputStyle}
-        >
-          <option value="">Выберите тип</option>
-          <option>Услуги</option>
-          <option>Агентство</option>
-          <option>Производство</option>
-          <option>Торговля</option>
-          <option>Онлайн-продукт</option>
-          <option>Другое</option>
-        </select>
-        {form.businessType === 'Другое' && (
-          <div className="mt-2">
+      <div className={groupClass} style={{ borderColor: BORDER }}>
+        <button type="button" onClick={() => toggleGroup('business')} className={headerClass}>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: TEXT }}>1. О бизнесе — что и кому</p>
+            <p className="mt-1 text-xs" style={{ color: TEXT2 }}>Чем занимается бизнес, кто платит и как выглядит контур направлений.</p>
+          </div>
+          <span className="text-xs font-semibold" style={{ color: cfg.accent }}>{openGroups.business ? 'Свернуть' : 'Открыть'}</span>
+        </button>
+        {openGroups.business && (
+          <div className="grid gap-4 border-t px-4 py-4" style={{ borderColor: BORDER_SOFT }}>
             <Field
-              label="Укажите тип бизнеса или нишу *"
-              value={form.industry}
-              onChange={(v) => setField('industry', v)}
-              placeholder="Например: франшиза, образовательный проект, строительная компания, фитнес-студия"
+              label="Компания / проект"
+              value={form.company}
+              onChange={(v) => setField('company', v)}
+              placeholder="Например: ED Agency"
               inputCls={inputCls}
               inputStyle={inputStyle}
               focusStyle={focusStyle}
+            />
+            <div>
+              <label className="block text-sm mb-1.5" style={{ color: TEXT2 }}>
+                Тип бизнеса
+              </label>
+              <select
+                value={form.businessType}
+                onChange={(e) => {
+                  const t = e.target.value
+                  fillForm({ businessType: t, industry: t !== 'Другое' ? '' : form.industry })
+                }}
+                className={inputCls}
+                style={inputStyle}
+              >
+                <option value="">Выберите тип</option>
+                <option>Услуги</option>
+                <option>Агентство</option>
+                <option>Производство</option>
+                <option>Торговля</option>
+                <option>Онлайн-продукт</option>
+                <option>Другое</option>
+              </select>
+              {form.businessType === 'Другое' && (
+                <div className="mt-2">
+                  <Field
+                    label="Укажите тип бизнеса или нишу"
+                    value={form.industry}
+                    onChange={(v) => setField('industry', v)}
+                    placeholder="Например: образовательный проект, консалтинг, студия"
+                    inputCls={inputCls}
+                    inputStyle={inputStyle}
+                    focusStyle={focusStyle}
+                  />
+                </div>
+              )}
+            </div>
+            <TextArea
+              label="Чем занимается бизнес? *"
+              value={form.whatDoYouSell}
+              onChange={(v) => setField('whatDoYouSell', v)}
+              placeholder="Что вы делаете и для кого. Не перечисляйте всё подряд — сформулируйте суть."
+              rows={4}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Кто платит деньги прямо сейчас?"
+              value={form.whoIsCustomer}
+              onChange={(v) => setField('whoIsCustomer', v)}
+              placeholder="Кто ваш клиент, какие сегменты или типы компаний приносят деньги."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field
+                label="Сколько лет бизнесу и сколько человек в команде?"
+                value={form.businessAge}
+                onChange={(v) => setField('businessAge', v)}
+                placeholder="Например: 4 года, 10 человек"
+                inputCls={inputCls}
+                inputStyle={inputStyle}
+                focusStyle={focusStyle}
+              />
+              <TextArea
+                label="Основные направления / продукты"
+                value={form.revenueMechanics}
+                onChange={(v) => setField('revenueMechanics', v)}
+                placeholder="Ключевые направления, продукты или услуги."
+                rows={3}
+                inputCls={inputCls}
+                inputStyle={inputStyle}
+              />
+            </div>
+            <TextArea
+              label="Есть ли партнёры или совладельцы? Как распределены роли?"
+              value={form.partnersRoles}
+              onChange={(v) => setField('partnersRoles', v)}
+              placeholder="Кто за что отвечает, если партнёры есть."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
             />
           </div>
         )}
       </div>
 
-      {/* 3. What do you sell */}
-      <TextArea
-        label="Что продаёт компания? *"
-        value={form.whatDoYouSell}
-        onChange={(v) => setField('whatDoYouSell', v)}
-        placeholder="Например: маркетинговые услуги на ретейнере, производство мебели, онлайн-курс"
-        rows={3}
-        inputCls={inputCls}
-        inputStyle={inputStyle}
-      />
+      <div className={groupClass} style={{ borderColor: BORDER }}>
+        <button type="button" onClick={() => toggleGroup('money')} className={headerClass}>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: TEXT }}>2. Деньги — цифры честно</p>
+            <p className="mt-1 text-xs" style={{ color: TEXT2 }}>Достаточно порядка цифр — не нужен идеальный финансовый отчёт.</p>
+          </div>
+          <span className="text-xs font-semibold" style={{ color: cfg.accent }}>{openGroups.money ? 'Свернуть' : 'Открыть'}</span>
+        </button>
+        {openGroups.money && (
+          <div className="grid gap-4 border-t px-4 py-4 md:grid-cols-2" style={{ borderColor: BORDER_SOFT }}>
+            <Field
+              label="Ежемесячная выручка"
+              value={form.currentRevenue}
+              onChange={(v) => setField('currentRevenue', v)}
+              placeholder="Например: 4–5 млн ₽/мес"
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+              focusStyle={focusStyle}
+            />
+            <Field
+              label="Чистая прибыль / что собственник забирает себе"
+              value={form.currentProfit}
+              onChange={(v) => setField('currentProfit', v)}
+              placeholder="Например: 300–350k в месяц"
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+              focusStyle={focusStyle}
+            />
+            <Field
+              label="Текущая рентабельность"
+              value={form.currentMargin}
+              onChange={(v) => setField('currentMargin', v)}
+              placeholder="Например: 17,8%"
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+              focusStyle={focusStyle}
+            />
+            <Field
+              label="Целевая рентабельность"
+              value={form.targetMargin}
+              onChange={(v) => setField('targetMargin', v)}
+              placeholder="Например: 22–25%"
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+              focusStyle={focusStyle}
+            />
+            <TextArea
+              label="Личная финансовая цель собственника"
+              value={form.ownerFinancialGoal}
+              onChange={(v) => setField('ownerFinancialGoal', v)}
+              placeholder="Например: 650k в месяц к августу."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+          </div>
+        )}
+      </div>
 
-      {/* 4. Bottleneck — pills */}
-      <BottleneckPills
-        value={form.bottleneckGuess}
-        onChange={(v) => setField('bottleneckGuess', v)}
-        accent={cfg.accent}
-        accentBg={cfg.accentBg}
-      />
+      <div className={groupClass} style={{ borderColor: BORDER }}>
+        <button type="button" onClick={() => toggleGroup('bottleneck')} className={headerClass}>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: TEXT }}>3. Где застряло — узкое место</p>
+            <p className="mt-1 text-xs" style={{ color: TEXT2 }}>Главная боль, очередь, перегрузка и одна проблема, которую хотелось бы убрать первой.</p>
+          </div>
+          <span className="text-xs font-semibold" style={{ color: cfg.accent }}>{openGroups.bottleneck ? 'Свернуть' : 'Открыть'}</span>
+        </button>
+        {openGroups.bottleneck && (
+          <div className="grid gap-4 border-t px-4 py-4" style={{ borderColor: BORDER_SOFT }}>
+            <TextArea
+              label="Что мешает зарабатывать больше прямо сейчас? *"
+              value={form.mainPain}
+              onChange={(v) => setField('mainPain', v)}
+              placeholder="Опишите главную боль: что не даёт бизнесу расти или держать нормальную прибыль."
+              rows={4}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Где есть очередь, задержка или перегрузка? *"
+              value={form.delaysQueues}
+              onChange={(v) => setField('delaysQueues', v)}
+              placeholder="Продажи, производство, delivery, собственник, команда, согласование, входящий поток."
+              rows={4}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Что не двигается без собственника, ключевого человека или одного этапа?"
+              value={form.ownerDependency}
+              onChange={(v) => setField('ownerDependency', v)}
+              placeholder="Где процесс останавливается, если конкретный человек не включился лично."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Если убрать одну проблему, что бы это было?"
+              value={form.oneProblemToRemove}
+              onChange={(v) => setField('oneProblemToRemove', v)}
+              placeholder="Одно главное ограничение по ощущению."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+          </div>
+        )}
+      </div>
 
-      {/* 5. Description — upload + textarea */}
+      <div className={groupClass} style={{ borderColor: BORDER }}>
+        <button type="button" onClick={() => toggleGroup('tried')} className={headerClass}>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: TEXT }}>4. Что уже пробовали</p>
+            <p className="mt-1 text-xs" style={{ color: TEXT2 }}>Какие решения уже проверяли и что из этого реально сработало или перестало работать.</p>
+          </div>
+          <span className="text-xs font-semibold" style={{ color: cfg.accent }}>{openGroups.tried ? 'Свернуть' : 'Открыть'}</span>
+        </button>
+        {openGroups.tried && (
+          <div className="grid gap-4 border-t px-4 py-4" style={{ borderColor: BORDER_SOFT }}>
+            <TextArea
+              label="Какие решения уже пробовали? *"
+              value={form.triedBefore}
+              onChange={(v) => setField('triedBefore', v)}
+              placeholder="Инструменты, найм, контент, изменения в продукте, процессы, приоритизация."
+              rows={4}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Что сработало, что не сработало?"
+              value={form.triedResults}
+              onChange={(v) => setField('triedResults', v)}
+              placeholder="Где был эффект, а где решение не прижилось или перестало работать."
+              rows={4}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Есть ли незавершённые проекты, идеи или активы без потока денег?"
+              value={form.unfinishedProjects}
+              onChange={(v) => setField('unfinishedProjects', v)}
+              placeholder="Что уже съело ресурс, но пока не даёт продаж или денежного потока."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className={groupClass} style={{ borderColor: BORDER }}>
+        <button type="button" onClick={() => toggleGroup('owner')} className={headerClass}>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: TEXT }}>5. Ты как система</p>
+            <p className="mt-1 text-xs" style={{ color: TEXT2 }}>Роль собственника, его ежедневная операционка и где он сам может быть ограничением.</p>
+          </div>
+          <span className="text-xs font-semibold" style={{ color: cfg.accent }}>{openGroups.owner ? 'Свернуть' : 'Открыть'}</span>
+        </button>
+        {openGroups.owner && (
+          <div className="grid gap-4 border-t px-4 py-4" style={{ borderColor: BORDER_SOFT }}>
+            <TextArea
+              label="Что собственник делает лично каждый день?"
+              value={form.ownerDailyRole}
+              onChange={(v) => setField('ownerDailyRole', v)}
+              placeholder="CEO, продавец, продуктолог, операционный менеджер — или всё сразу."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Где собственник сам может быть узким местом?"
+              value={form.bottleneckGuess}
+              onChange={(v) => setField('bottleneckGuess', v)}
+              placeholder="По ощущению: в продажах, согласованиях, фокусе, продукте, найме, delivery."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Что собственник делает хорошо, а что — плохо или неохотно?"
+              value={form.ownerStrengthsWeaknesses}
+              onChange={(v) => setField('ownerStrengthsWeaknesses', v)}
+              placeholder="Например: сильная сторона — продукт, слабее — продажи, маркетинг или операционный контроль."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className={groupClass} style={{ borderColor: BORDER }}>
+        <button type="button" onClick={() => toggleGroup('horizon')} className={headerClass}>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: TEXT }}>6. Горизонт и приоритеты</p>
+            <p className="mt-1 text-xs" style={{ color: TEXT2 }}>Что конкурирует за внимание и какое одно решение сильнее всего повлияет на результат.</p>
+          </div>
+          <span className="text-xs font-semibold" style={{ color: cfg.accent }}>{openGroups.horizon ? 'Свернуть' : 'Открыть'}</span>
+        </button>
+        {openGroups.horizon && (
+          <div className="grid gap-4 border-t px-4 py-4" style={{ borderColor: BORDER_SOFT }}>
+            <Field
+              label="Горизонт планирования"
+              value={form.planningHorizon}
+              onChange={(v) => setField('planningHorizon', v)}
+              placeholder="Месяц, квартал, год"
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+              focusStyle={focusStyle}
+            />
+            <TextArea
+              label="Какие проекты или направления конкурируют за внимание?"
+              value={form.competingPriorities}
+              onChange={(v) => setField('competingPriorities', v)}
+              placeholder="Перечислите направления, проекты или инициативы, которые делят между собой внимание команды и собственника."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Какое одно решение, по ощущению, сильнее всего повлияет на результат?"
+              value={form.highestImpactDecision}
+              onChange={(v) => setField('highestImpactDecision', v)}
+              placeholder="Доверяйте первому сильному ответу."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+            <TextArea
+              label="Желаемый результат через 30–90 дней"
+              value={form.desiredResult}
+              onChange={(v) => setField('desiredResult', v)}
+              placeholder="Что должно измениться в деньгах, фокусе, продажах или роли собственника."
+              rows={3}
+              inputCls={inputCls}
+              inputStyle={inputStyle}
+            />
+          </div>
+        )}
+      </div>
+
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <label className="block text-sm" style={{ color: TEXT2 }}>
-            Описание ситуации *
+            Документ для уточнения анализа
           </label>
           <a
             href={GOLDRATT_TEMPLATE_URL}
@@ -2054,9 +2412,12 @@ function GoldrattSection({
             style={{ color: cfg.accent }}
           >
             <FileText className="h-3 w-3" />
-            Скачать шаблон ограничения
+            Скачать расширенный шаблон
           </a>
         </div>
+        <p className="mb-3 text-xs leading-relaxed" style={{ color: TEXT2 }}>
+          Не обязателен. Используйте, если хотите структурировать процесс, этапы, очередь и загрузку команды.
+        </p>
         <FileUploadZone
           variant="goldratt"
           onFileLoaded={onFileLoaded}
@@ -2066,17 +2427,6 @@ function GoldrattSection({
           accentBg={cfg.accentBg}
           accentBorder={cfg.accentBorder}
         />
-        <div className="mt-2">
-          <TextArea
-            label=""
-            value={form.mainPain}
-            onChange={(v) => setField('mainPain', v)}
-            placeholder="Опишите: что сейчас мешает росту, где возникают задержки, от кого зависят ключевые решения, что уже пробовали..."
-            rows={6}
-            inputCls={inputCls}
-            inputStyle={inputStyle}
-          />
-        </div>
       </div>
     </>
   )

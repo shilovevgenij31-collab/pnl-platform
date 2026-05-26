@@ -30,6 +30,17 @@ export interface AnalyzeFormFields {
   ownerDependency: string
   unfinishedProjects: string
   desiredResult: string
+  businessAge: string
+  partnersRoles: string
+  currentProfit: string
+  ownerFinancialGoal: string
+  oneProblemToRemove: string
+  triedResults: string
+  ownerDailyRole: string
+  ownerStrengthsWeaknesses: string
+  planningHorizon: string
+  competingPriorities: string
+  highestImpactDecision: string
   sourceFileName?: string
   selectedSheet?: string
   parsedRows?: string
