@@ -1043,16 +1043,20 @@ const PNL_REPORT_SECTIONS = [
 
 const GOLDRATT_REPORT_SECTIONS = [
   'Главное ограничение',
-  'Почему это именно оно',
-  'Что нельзя оптимизировать сейчас',
   'Как снять ограничение',
+  'Что не трогать сейчас',
   'Первые действия',
+  'Почему это оно',
   'Что проверить дальше',
 ]
 
 function WhatYouGetCard({ cfg, agent }: { cfg: AgentCfg; agent: AgentType }) {
   const items = agent === 'pnl' ? PNL_REPORT_SECTIONS : GOLDRATT_REPORT_SECTIONS
   const Icon = cfg.icon
+  const sidebarNote =
+    agent === 'pnl'
+      ? <>AI анализирует данные за <strong>1–2 минуты</strong> и формирует структурированный консалтинговый отчёт</>
+      : <>AI анализирует ответы и документы <strong>1–2 минуты</strong> и формирует короткий управленческий отчёт</>
 
   return (
     <div className="sticky top-24 space-y-4">
@@ -1102,8 +1106,7 @@ function WhatYouGetCard({ cfg, agent }: { cfg: AgentCfg; agent: AgentType }) {
         style={{ background: cfg.accentBg, border: `1px solid ${cfg.accentBorder}` }}
       >
         <p className="text-xs leading-relaxed" style={{ color: cfg.badgeText }}>
-          AI анализирует данные за <strong>1–2 минуты</strong> и формирует структурированный
-          консалтинговый отчёт
+          {sidebarNote}
         </p>
       </div>
     </div>
