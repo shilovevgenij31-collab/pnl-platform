@@ -3035,7 +3035,7 @@ function GoldrattActionCard({ card }: { card: DetailCard }) {
   if (!action) return null
   const colors = TONES[action.tone]
   return (
-    <aside className="flex flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
+    <aside className="flex h-full flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
       <div className="flex items-start gap-3">
         <IconBadge icon={action.icon} tone={action.tone} />
         <div>
@@ -3044,7 +3044,7 @@ function GoldrattActionCard({ card }: { card: DetailCard }) {
         </div>
       </div>
       <p className="text-[1.02rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
-      <p className="text-[0.92rem] leading-[1.55]" style={{ color: '#334155' }}>{action.text}</p>
+      <p className="flex-1 text-[0.92rem] leading-[1.55]" style={{ color: '#334155' }}>{action.text}</p>
       {action.tags && action.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-1">
           {action.tags.map((tag) => (
@@ -3054,6 +3054,11 @@ function GoldrattActionCard({ card }: { card: DetailCard }) {
           ))}
         </div>
       )}
+      <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: colors.border, background: colors.bg }}>
+        <p className="text-[11px] leading-snug" style={{ color: colors.text }}>
+          <span className="font-semibold">Правило на 30 дней:</span> один поток денег, один приоритет — все остальные гипотезы в backlog.
+        </p>
+      </div>
     </aside>
   )
 }
@@ -3237,39 +3242,6 @@ function GoldrattInfoBlock({ facts }: { facts: GoldrattFacts | null }) {
   )
 }
 
-
-function GoldrattSourceBlock({ facts }: { facts: GoldrattFacts | null }) {
-  if (!facts) return null
-
-  const fileName = facts.sourceMetadata['Источник'] ?? 'Контекст предпринимателя'
-  const period = facts.sourceMetadata['Период'] ?? 'Не указан'
-
-  return (
-    <section className="mt-4 rounded-3xl border p-4 sm:p-5" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)' }}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>Исходные данные</p>
-          <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>Что усилит точность анализа</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-snug" style={{ color: TEXT2 }}>
-            Для поиска ограничения достаточно контекста. Для подтверждения нужны данные, которые отделяют ощущение от факта.
-          </p>
-        </div>
-        <StatusPill tone="blue">Уверенность: {facts.confidenceLabel}</StatusPill>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {['P&L / финансы', 'CRM / воронка продаж', 'Список проектов', 'Описание процесса', 'Оргструктура / роли', 'Загрузка команды'].map((item) => (
-          <span key={item} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT, color: TEXT2 }}>
-            {item}
-          </span>
-        ))}
-      </div>
-      <p className="mt-2.5 text-[11px] leading-relaxed" style={{ color: TEXT3 }}>
-        Источник: {fileName} · Период: {period} · {facts.confidenceNote}
-      </p>
-    </section>
-  )
-}
-
 function GoldrattDashboard({
   cards,
   facts,
@@ -3289,14 +3261,14 @@ function GoldrattDashboard({
   }
 
   const byId = (id: string) => cards.find((card) => card.id === id) ?? null
-  const sequence = ['constraint', 'exploit', 'donot', 'limitations'] as const
+  const sequence = ['constraint', 'exploit', 'donot'] as const
 
   return (
     <div className="space-y-4">
       {sequence.map((id) => {
         const card = byId(id)
         if (!card) return null
-        const isFullWidth = id === 'exploit' || id === 'donot' || id === 'limitations'
+        const isFullWidth = id === 'exploit' || id === 'donot'
 
         if (!isFullWidth) {
           return (
@@ -4140,7 +4112,19 @@ export default function ReportDisplay({
           </div>
         )}
         {data.agentType === 'goldratt' && goldrattFacts && (
-          <GoldrattSourceBlock facts={goldrattFacts} />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+            <p className="max-w-2xl text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
+              <span className="font-semibold" style={{ color: TEXT }}>Уверенность: {goldrattFacts.confidenceLabel}.</span>{' '}
+              {goldrattFacts.confidenceNote}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {['P&L', 'CRM / воронка', 'Список проектов', 'Роли', 'Загрузка команды'].map((item) => (
+                <span key={item} className="rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={{ background: CARD, borderColor: BORDER_SOFT, color: TEXT3 }}>
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Полный текстовый отчёт — всегда внизу, кнопка рядом с контентом */}
