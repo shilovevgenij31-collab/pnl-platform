@@ -25,6 +25,10 @@ function buildPnlUserPrompt(data: FormInput): string {
   if (data.triedBefore) lines.push('', 'Что уже пробовали для роста прибыли:', data.triedBefore)
   if (data.extraContext) lines.push('', 'Дополнительный контекст:', data.extraContext)
 
+  if (data.founderPlan?.trim()) {
+    lines.push('', '=== КАК ПРЕДПРИНИМАТЕЛЬ ВИДИТ РЕШЕНИЕ ===', '', data.founderPlan)
+  }
+
   if (data.pnlText?.trim()) {
     lines.push('', '=== P&L / ФИНАНСОВЫЕ ДАННЫЕ ===', '', data.pnlText)
   }
@@ -79,6 +83,10 @@ function buildGoldrattUserPrompt(data: FormInput): string {
   if (data.highestImpactDecision) lines.push(`Какое одно решение сильнее всего повлияет на результат:\n${data.highestImpactDecision}`, '')
   if (data.desiredResult) lines.push(`Желаемый результат через 30–90 дней:\n${data.desiredResult}`, '')
   if (data.extraContext) lines.push(`Дополнительный контекст:\n${data.extraContext}`, '')
+
+  if (data.founderPlan?.trim()) {
+    lines.push('', '=== КАК ПРЕДПРИНИМАТЕЛЬ ВИДИТ РЕШЕНИЕ ===', '', data.founderPlan)
+  }
 
   if (data.pnlText?.trim()) {
     lines.push('', '=== ПРИЛОЖЕННЫЙ ДОКУМЕНТ / ДОПОЛНИТЕЛЬНЫЙ ИСТОЧНИК ===', '')

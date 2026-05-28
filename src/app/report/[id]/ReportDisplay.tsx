@@ -2943,43 +2943,35 @@ function GoldrattLimitationsPanel({ facts }: { facts: GoldrattFacts }) {
   )
 }
 
-function pnlActionContent(card: DetailCard): { title: string; main: string; text: string; icon: LucideIcon; tone: Tone; tags?: string[] } | null {
+function pnlActionContent(card: DetailCard): { title: string; main: string; text: string; tone: Tone } | null {
   switch (card.id) {
     case 'diagnosis':
       return {
         title: 'Что делать первым',
-        main: 'Разделить сеть на клубы-доноры, нейтральные клубы и клубы, которые съедают маржу',
-        text: card.actionText ?? 'Сейчас нельзя лечить бизнес только продажами или общими сокращениями. Сначала нужно понять, где именно возникает убыток.',
-        icon: Target,
+        main: 'Перестать трактовать выручку как главный показатель здоровья',
+        text: card.actionText ?? 'Управлять нужно регулярностью прибыли: какие месяцы становятся плюсовыми, почему плюс не повторяется и какие правила должны сделать прибыль нормой, а не исключением.',
         tone: 'red',
-        tags: ['Доноры', 'Нейтральные', 'Пожиратели маржи'],
       }
     case 'profit-drag':
       return {
         title: 'Что делать с расходной базой',
         main: 'Разбирать УК, ФОТ и аренду по каждому клубу, а не резать всё подряд',
         text: card.actionText ?? 'Главный риск — начать экономить на мелких или видимых статьях и не тронуть настоящую причину. Если проблема сидит в аренде, УК или структуре ФОТ конкретных клубов, экономия на продуктах или сервисе может ухудшить клиентский опыт и не исправить маржу. Первое действие: собрать расходы по клубам и найти, где база не соответствует выручке.',
-        icon: Building2,
         tone: 'amber',
-        tags: ['УК', 'ФОТ', 'Аренда', 'По клубам'],
       }
     case 'trend-anomalies':
       return {
         title: 'Что делать по динамике',
         main: 'Разделить месяцы на пиковые, обычные и провальные',
         text: card.actionText ?? 'Нельзя управлять сетью по среднему месяцу. Для пиковых месяцев нужны правила удержания маржи, для обычных — контроль базы расходов, для провальных — заранее подготовленный сценарий снижения операционной нагрузки.',
-        icon: Calendar,
         tone: 'blue',
-        tags: ['Пик', 'Норма', 'Провал'],
       }
     case 'breakeven':
       return {
         title: 'Что делать с порогом',
         main: 'Не ставить целью просто “выйти в ноль”',
         text: card.actionText ?? '9,5 млн ₽ — это нижняя граница выживания, а не здоровая цель. Нужен запас прочности: либо снижать базу расходов, либо целиться выше порога, иначе каждый слабый месяц снова будет возвращать сеть в минус.',
-        icon: Gauge,
         tone: 'red',
-        tags: ['Не ноль', 'Запас', 'Маржа'],
       }
     default:
       return null
@@ -2992,38 +2984,21 @@ function PnlActionCard({ card }: { card: DetailCard }) {
   const colors = TONES[action.tone]
   return (
     <aside className="flex h-full flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
-      <div className="flex items-start gap-3">
-        <IconBadge icon={action.icon} tone={action.tone} />
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Управленческий вывод</p>
-          <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
-        </div>
-      </div>
+      <h3 className="text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
       <p className="text-[1.05rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
       <p className="flex-1 text-[0.94rem] leading-[1.62]" style={{ color: '#334155' }}>{action.text}</p>
-      {action.tags && action.tags.length > 0 && (
-        <div className="mt-auto flex flex-wrap gap-2 pt-1">
-          {action.tags.map((tag) => (
-            <span key={tag} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}>
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
     </aside>
   )
 }
 
-function goldrattActionContent(card: DetailCard): { title: string; main: string; text: string; icon: LucideIcon; tone: Tone; tags?: string[] } | null {
+function goldrattActionContent(card: DetailCard): { title: string; main: string; text: string; tone: Tone } | null {
   switch (card.id) {
     case 'constraint':
       return {
         title: 'Что делать первым',
-        main: 'Выбрать один поток денег на 30 дней и заморозить лишнее',
-        text: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один денежный поток и подчинить ему контент, продажи, продукт и командные задачи на ближайшие 30 дней.',
-        icon: Target,
+        main: 'Перестать лечить бизнес количеством идей',
+        text: 'Главное ограничение сейчас — внимание собственника: каждая новая гипотеза забирает тот же ресурс, через который проходят продажи, продукт и рост. Первое решение — выбрать один денежный поток и подчинить ему контент, продажи, продукт и командные задачи на ближайшие 30 дней.',
         tone: 'red',
-        tags: ['Один поток денег', 'Фокус', 'Стоп гипотезам'],
       }
     default:
       return null
@@ -3036,29 +3011,9 @@ function GoldrattActionCard({ card }: { card: DetailCard }) {
   const colors = TONES[action.tone]
   return (
     <aside className="flex h-full flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
-      <div className="flex items-start gap-3">
-        <IconBadge icon={action.icon} tone={action.tone} />
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Управленческий вывод</p>
-          <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
-        </div>
-      </div>
+      <h3 className="text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
       <p className="text-[1.02rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
       <p className="flex-1 text-[0.92rem] leading-[1.55]" style={{ color: '#334155' }}>{action.text}</p>
-      {action.tags && action.tags.length > 0 && (
-        <div className="flex flex-wrap gap-2 pt-1">
-          {action.tags.map((tag) => (
-            <span key={tag} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}>
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: colors.border, background: colors.bg }}>
-        <p className="text-[11px] leading-snug" style={{ color: colors.text }}>
-          <span className="font-semibold">Правило на 30 дней:</span> один поток денег, один приоритет — все остальные гипотезы в backlog.
-        </p>
-      </div>
     </aside>
   )
 }

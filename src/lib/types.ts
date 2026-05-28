@@ -41,6 +41,7 @@ export interface AnalyzeFormFields {
   planningHorizon: string
   competingPriorities: string
   highestImpactDecision: string
+  founderPlan?: string
   sourceFileName?: string
   selectedSheet?: string
   parsedRows?: string

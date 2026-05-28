@@ -69,6 +69,7 @@ const BASE_EMPTY: Omit<AnalyzeFormFields, 'agentType'> = {
   planningHorizon: '',
   competingPriorities: '',
   highestImpactDecision: '',
+  founderPlan: '',
 }
 
 const EMPTY_PNL: AnalyzeFormFields = { ...BASE_EMPTY, agentType: 'pnl' }
@@ -1334,7 +1335,7 @@ function FileUploadZone({
                   Проверьте данные перед анализом
                 </p>
                 <p className="mt-1 text-xs" style={{ color: TEXT2 }}>
-                  {variant === 'pnl' ? 'В анализ будет отправлена очищенная таблица.' : 'В анализ будет отправлен очищенный документ или таблица.'}
+                  {variant === 'pnl' ? 'В анализ будет отправлена полная очищенная таблица.' : 'В анализ будет отправлен очищенный документ или таблица.'}{currentAnalysis.nonEmptyColumns > PREVIEW_COLS && ' Предпросмотр ограничен 15 колонками — все периоды включены в анализ.'}
                 </p>
               </div>
               <span
@@ -1946,7 +1947,23 @@ function PnlSection({
         inputStyle={inputStyle}
       />
 
-      {/* 5. Financial data — upload / google sheets / paste */}
+      {/* 5. Founder plan */}
+      <div>
+        <TextArea
+          label="Какое решение вы сейчас считаете правильным?"
+          value={form.founderPlan ?? ''}
+          onChange={(v) => setField('founderPlan', v)}
+          placeholder="Например: сократить расходы, поднять цены, усилить продажи, закрыть слабые направления, нанять менеджера, пересобрать продукт."
+          rows={3}
+          inputCls={inputCls}
+          inputStyle={inputStyle}
+        />
+        <p className="mt-1.5 text-xs" style={{ color: '#94A3B8' }}>
+          AI сравнит ваш план с цифрами P&L и покажет, подтверждается ли он данными или лечит не ту проблему.
+        </p>
+      </div>
+
+      {/* 6. Financial data — upload / google sheets / paste */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-sm" style={{ color: TEXT2 }}>
@@ -2401,6 +2418,21 @@ function GoldrattSection({
             />
           </div>
         )}
+      </div>
+
+      <div>
+        <TextArea
+          label="Как вы сами видите решение сейчас?"
+          value={form.founderPlan ?? ''}
+          onChange={(v) => setField('founderPlan', v)}
+          placeholder="Например: нанять человека, усилить маркетинг, закрыть проект, сфокусироваться на продажах, убрать операционку с собственника."
+          rows={3}
+          inputCls={inputCls}
+          inputStyle={inputStyle}
+        />
+        <p className="mt-1.5 text-xs" style={{ color: '#94A3B8' }}>
+          AI проверит ваш план через Теорию ограничений: работает ли он на главное ограничение или оптимизирует не то место.
+        </p>
       </div>
 
       <div>
