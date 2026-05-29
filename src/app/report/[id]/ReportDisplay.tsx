@@ -224,6 +224,8 @@ interface GoldrattFacts {
   actionPlan30: string[]
   confidenceLabel: string
   confidenceNote: string
+  hypothesisVerdict: string | null
+  hypothesisSnippet: string | null
 }
 
 interface DetailCard {
@@ -746,6 +748,24 @@ function extractConstraintTitle(content: string): string {
   return firstSentence(content, 'Главное ограничение определено.')
 }
 
+function extractHypothesisVerdict(content: string): string | null {
+  // Match "Вердикт: ..." line, strip markdown bold markers
+  const match = content.match(/вердикт[:\s]+([^\n]+)/i)
+  if (!match) return null
+  const verdict = cleanText(match[1]).replace(/^\*+|\*+$/g, '').replace(/^«|»$/g, '')
+  return verdict.length >= 5 && verdict.length <= 80 ? verdict : null
+}
+
+function extractHypothesisSnippet(content: string): string | null {
+  // Match "Почему: ..." — collect text until blank line or next heading
+  const idx = content.search(/почему[:\s]+/i)
+  if (idx < 0) return null
+  const afterLabel = content.slice(idx).replace(/^почему[:\s]+/i, '')
+  const snippet = afterLabel.split(/\n\s*\n/)[0] ?? ''
+  const text = cleanText(snippet).replace(/\n+/g, ' ').trim()
+  return text.length >= 30 ? text.slice(0, 280) : null
+}
+
 
 function extractTargetMargin(report: string): number | null {
   const match = report.match(/целевая\s+(?:маржа|рентабельность)[^0-9-]*(-?\d+(?:[.,]\d+)?)\s*%/i)
@@ -1117,24 +1137,48 @@ function buildGoldrattFacts(report: string, sections: ReportSection[], sourceTex
   const actionsContent = actionsSection?.content ?? ''
   const metadata = parseKeyValueMetadata(sourceText)
 
+  const hypothesisSection = findGS(['проверка гипотезы', 'гипотез'])
+  const hypothesisContent = hypothesisSection?.content ?? ''
+
   const evidenceItems = uniqueBullets(extractBullets(evidenceContent, 6), 6)
   const doNotOptimize = uniqueBullets(extractBullets(donotSection?.content ?? '', 6), 6)
   const exploitActions = uniqueBullets(extractBullets(exploitSection?.content ?? '', 5), 5)
   const subordinateActions = uniqueBullets(extractBullets(subordinateSection?.content ?? '', 4), 4)
   const elevateActions = uniqueBullets(extractBullets(elevateSection?.content ?? '', 5), 5)
-  const actionBullets = uniqueBullets(extractBullets(actionsContent, 5), 5)
-  const actionPlan7 = actionBullets[0] ? [actionBullets[0]] : ['Выбрать один поток денег на ближайшие 30 дней и временно заморозить новые инициативы.']
-  const actionPlan14 = actionBullets[1] ? [actionBullets[1]] : ['Собрать список незавершённых проектов и разделить их на дающие деньги, близкие к деньгам и заморозку.']
-  const actionPlan30 = actionBullets[2] ? [actionBullets[2]] : ['Запустить один управляемый цикл продаж по выбранному направлению и посмотреть, что реально масштабируется.']
+  const actionBullets = uniqueBullets(extractBullets(actionsContent, 9), 9)
+
+  // Parse by explicit time windows (UI maps: actionPlan7→"48ч", actionPlan14→"7д", actionPlan30→"14д")
+  const bullets48 = extractBulletsAfterHeading(actionsContent, '48', '7 дней')
+  const bullets7d = extractBulletsAfterHeading(actionsContent, '7 дней', '14 дней')
+  const bullets14d = extractBulletsAfterHeading(actionsContent, '14 дней', '')
+
+  const actionPlan7 = bullets48.length > 0 ? bullets48 :
+    actionBullets[0] ? [actionBullets[0]] :
+    ['Выбрать один денежный поток на 30 дней и временно заморозить лишние инициативы.',
+     'Выписать все активные направления и остановить те, что не дают деньги сейчас.',
+     'Определить, какие входящие заявки относятся к выбранному потоку.']
+
+  const actionPlan14 = bullets7d.length > 0 ? bullets7d :
+    actionBullets[1] ? [actionBullets[1]] :
+    ['Назначить ответственного за первичную обработку заявок без собственника.',
+     'Собрать список лидов по выбранному направлению — фиксировать заявки, разговоры, офферы, оплаты.']
+
+  const actionPlan30 = bullets14d.length > 0 ? bullets14d :
+    actionBullets[2] ? [actionBullets[2]] :
+    ['Запустить один управляемый цикл продаж по выбранному направлению.',
+     'Проверить, где стопорится поток: лиды, созвоны, офферы, решения, delivery.',
+     'Только после этого решать, что делегировать или расширять.']
+
   const constraintTitle = extractConstraintTitle(constraintContent)
   const diagnosis = firstSentence(constraintContent, 'Система упирается в одно управленческое ограничение.')
   const constraint = ruSanitize(firstSentence(constraintContent, 'Главное ограничение определено.'))
   const futureConstraint = firstSentence(limitationsSection?.content ?? '', '', 180) || null
+  const hypothesisVerdict = extractHypothesisVerdict(hypothesisContent)
+  const hypothesisSnippet = extractHypothesisSnippet(hypothesisContent)
   const confidenceLabel = metadata['Уровень уверенности'] ?? 'средний'
-  const confidenceNote =
-    sourceText
-      ? 'Вывод основан на ответах предпринимателя и дополнительном контексте, а не на полной CRM-выгрузке.'
-      : 'Вывод основан на контексте бизнеса. Без документов часть причин остаётся гипотезой.'
+  const confidenceNote = sourceText
+    ? 'Вывод основан на ответах предпринимателя и дополнительном контексте.'
+    : 'Уровень уверенности средний — вывод основан на ответах предпринимателя.'
 
   return {
     diagnosis,
@@ -1177,6 +1221,8 @@ function buildGoldrattFacts(report: string, sections: ReportSection[], sourceTex
     actionPlan30,
     confidenceLabel,
     confidenceNote,
+    hypothesisVerdict,
+    hypothesisSnippet,
   }
 }
 
@@ -1493,25 +1539,31 @@ function _buildGoldrattCards(facts: GoldrattFacts): DetailCard[] {
 }
 
 function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
+  const constraintValue = facts.constraintTitle ?? facts.mainConstraint ?? 'Главное ограничение определено'
+  const exploitValue = facts.exploitActions[0] ?? 'Сначала очистить фокус, потом подчинить систему и только после этого расширять'
+  const exploitSupport = facts.subordinateActions[0] ?? 'Выбрать один поток денег и выстроить вокруг него систему — не добавлять ресурсы в хаос.'
+  const constraintActionText = facts.actionPlan7.slice(0, 2).join(' ')
+    || 'Выбрать один денежный поток на 30 дней и временно заморозить лишние инициативы. Выписать все активные направления и остановить те, что не дают деньги сейчас.'
+
   return [
     {
       id: 'constraint',
       title: 'Главное ограничение',
-      kicker: 'Что ограничивает результат',
+      kicker: facts.hypothesisVerdict ?? 'Что ограничивает результат',
       tone: 'red',
       icon: Target,
-      value: 'Фокус собственника ограничивает рост ED Agency',
-      support: 'У агентства есть продуктовая экспертиза и направления роста, но слишком много гипотез, операционных задач и незавершённых проектов конкурируют за внимание Антона.',
+      value: constraintValue,
+      support: facts.constraint,
       statusLabel: 'Критично',
       detailTitle: 'Главное ограничение',
-      detailLead: facts.constraint,
-      bullets: [
-        'Ограничение здесь не в том, что у агентства мало идей или слабый продукт. Ограничение в том, что почти каждый путь к росту проходит через один и тот же ресурс: внимание, решения и календарь собственника.',
-        'Расфокус легко выглядит как развитие — направлений много, команда занята, гипотезы появляются постоянно. Но незавершённые инициативы не становятся продажами. Усилия расходуются, а поток денег почти не ускоряется.',
-        'Главная ошибка сейчас — лечить ситуацию количеством инициатив. Первым нужно выбрать один поток денег и подчинить ему решения, контент, продажи и календарь собственника.',
+      detailLead: facts.diagnosis,
+      bullets: facts.evidenceItems.length > 0 ? facts.evidenceItems.slice(0, 3) : [
+        'Ограничение сидит в одном узком месте, а не в списке проблем.',
+        'Пока оно не снято, оптимизация других частей системы не даст результата.',
+        'Первая ошибка — добавлять маркетинг и активность без снятия ограничения.',
       ],
-      note: 'Пока рост и продажи остаются завязаны на одном центре принятия решений, компания будет производить больше движения, чем денег.',
-      actionText: 'Сейчас опасно лечить бизнес количеством идей. Ограничение не в том, что мало направлений, а в том, что слишком много незавершённого конкурирует за внимание собственника. Первое решение — выбрать один поток денег на ближайшие 30 дней.',
+      note: facts.hypothesisSnippet ?? facts.confidenceNote,
+      actionText: constraintActionText,
       featured: true,
     },
     {
@@ -1520,18 +1572,18 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       kicker: 'Использовать → подчинить → расширить',
       tone: 'green',
       icon: Zap,
-      value: 'Сначала очистить фокус, потом подчинить систему и только после этого расширять',
-      support: 'Главное — не добавить ресурсы в хаос, а выбрать один поток денег и выстроить вокруг него систему.',
+      value: exploitValue,
+      support: exploitSupport,
       statusLabel: 'Подтверждено',
       detailTitle: 'Как снять ограничение',
       detailLead: 'Сначала использовать и очистить ограничение. Только потом расширять. Иначе расширение просто закрепит хаос.',
       bullets: [
-        'Использовать ограничение: на ближайшие 30 дней убрать с собственника всё, что не двигает выбранный поток денег. Не открывать новые гипотезы до тех пор, пока не понятно, какое направление реально даёт деньги быстрее всего.',
-        'Подчинить систему: команда, контент, продукт и партнёрские решения должны обслуживать один выбранный приоритет. Если задача не помогает выбранному направлению — она уходит в backlog.',
-        'Расширить ограничение: после очистки фокуса можно делегировать операционку, закрепить роли с партнёром и выделить ответственного за контур продаж. Но расширять нужно только после выбора потока денег.',
+        facts.exploitActions[0] ?? 'Убрать с собственника всё, что не двигает выбранный поток денег. Не открывать новые гипотезы, пока непонятно, какое направление даёт деньги быстрее всего.',
+        facts.subordinateActions[0] ?? 'Команда, контент, продукт и партнёрские решения — только под один выбранный приоритет. Если задача не помогает направлению — в backlog.',
+        facts.elevateActions[0] ?? 'После очистки фокуса делегировать операционку, закрепить роли и выделить ответственного за контур продаж. Расширять только после выбора потока денег.',
       ],
-      note: 'Логика принципиальна: сначала защитить ограничение от расфокуса, затем построить вокруг него ритм команды, и только после этого добавлять людей или процессы.',
-      actionText: 'На 30 дней убрать с собственника всё, что не двигает выбранный поток денег. Не открывать новые гипотезы и не расширять команду до тех пор, пока не выбран денежный приоритет.',
+      note: 'Логика принципиальна: сначала защитить ограничение от расфокуса, потом строить ритм команды вокруг него.',
+      actionText: facts.actionPlan14[0] ?? 'Назначить ответственного за первичную обработку заявок без собственника.',
     },
     {
       id: 'donot',
@@ -1543,14 +1595,14 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       support: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку быстрее, чем результат.',
       statusLabel: 'Стоп-лист',
       detailTitle: 'Что сейчас нельзя делать',
-      detailLead: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку. Бизнес становится активнее, но не обязательно прибыльнее.',
+      detailLead: 'Пока не выбран главный поток денег, любое улучшение добавляет нагрузку. Бизнес становится активнее, но не прибыльнее.',
       bullets: facts.doNotOptimize.length > 0 ? facts.doNotOptimize.slice(0, 4) : [
-        'Не запускать ещё один продукт, пока действующие направления не сведены к одному понятному потоку денег.',
-        'Не добавлять ещё один канал контента ради ощущения движения: новый контур не лечит ограничение в фокусе и продажах.',
+        'Не запускать новый продукт, пока действующие направления не сведены к одному понятному потоку денег.',
+        'Не добавлять каналы контента ради активности: это не лечит ограничение в фокусе и продажах.',
         'Не нанимать под хаос, если роли, приоритеты и контур продаж всё ещё не определены.',
-        'Не резать расходы вместо роста потока денег: это снижает давление, но не заменяет рост продаж.',
+        'Не усиливать маркетинг до того, как снято ограничение — это добавит больше незавершённой работы, а не денег.',
       ],
-      note: 'Локальная оптимизация усиливает незавершённое: проектов и активности больше, а денег не больше.',
+      note: 'Локальная оптимизация усиливает незавершённое: активности больше, а денег не больше.',
       actionText: 'Если ограничение сидит в фокусе собственника и несобранной системе продаж, новый продукт, канал или найм только увеличат число незавершённых задач. Бизнес станет активнее, но поток денег почти не ускорится.',
     },
     {
@@ -1560,15 +1612,15 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
       tone: 'slate',
       icon: Info,
       value: 'Ограничение понятно. Для подтверждения нужны данные.',
-      support: `Уровень уверенности: ${facts.confidenceLabel}. ${facts.confidenceNote}`,
+      support: facts.confidenceNote,
       statusLabel: `Уверенность: ${facts.confidenceLabel}`,
       detailTitle: 'Что усилит точность анализа',
       detailLead: 'Для поиска ограничения достаточно контекста. Для подтверждения — нужны данные по продажам, проектам и финансам.',
-      bullets: [
-        'P&L или финансы по направлениям помогут связать ограничение с конкретными цифрами прибыли.',
-        'CRM или воронка продаж покажут, где реально теряются сделки и насколько система работает без собственника.',
-        'Список проектов и гипотез позволит отделить работающие активы от замороженных ресурсов.',
-        'Описание процессов и ролей сделает вывод про собственника как бутылочное горлышко точнее.',
+      bullets: facts.limitations.length > 0 ? facts.limitations.slice(0, 4) : [
+        'P&L по направлениям помогут связать ограничение с конкретными цифрами прибыли.',
+        'CRM или воронка продаж покажут, где теряются сделки без участия собственника.',
+        'Список активных проектов позволит отделить работающие активы от замороженных.',
+        'Описание процессов и ролей сделает вывод про собственника как горлышко точнее.',
       ],
       note: `${facts.confidenceLabel}: вывод основан на контексте, а не на полной операционной карте.`,
     },
@@ -2534,11 +2586,11 @@ function CardPreview({
             <div className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Почему это ограничение</p>
               <div className="space-y-1.5">
-                {[
+                {(goldrattFacts.evidenceItems.length > 0 ? goldrattFacts.evidenceItems.slice(0, 3) : [
                   'Почти каждый путь к росту проходит через один ресурс — внимание и решения собственника.',
                   'Продажи зависят от ручного внимания, а не от повторяемого процесса.',
                   'Новые инициативы добавляют нагрузку в тот же узел, вместо того чтобы ускорять поток денег.',
-                ].map((item, i) => (
+                ]).map((item, i) => (
                   <div key={i} className="flex gap-2 text-[11px] leading-snug">
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: '#EEF2FF', color: '#3730A3' }}>{i + 1}</span>
                     <span style={{ color: TEXT }}>{item}</span>
@@ -3289,8 +3341,10 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
     case 'constraint':
       return {
         title: 'Что делать первым',
-        main: 'Перестать лечить бизнес количеством идей',
-        text: 'Главное ограничение сейчас — внимание собственника: каждая новая гипотеза забирает тот же ресурс, через который проходят продажи, продукт и рост. Первое решение — выбрать один денежный поток и подчинить ему контент, продажи, продукт и командные задачи на ближайшие 30 дней.',
+        main: card.kicker && card.kicker !== 'Что ограничивает результат'
+          ? card.kicker
+          : 'Снять ограничение прежде, чем усиливать продажи',
+        text: card.actionText ?? 'Выбрать один денежный поток на 30 дней и подчинить ему контент, продажи, продукт и командные задачи. Усиление маркетинга до снятия ограничения добавит незавершённой работы, а не денег.',
         tone: 'red',
       }
     default:
