@@ -43,14 +43,18 @@ npm run dev
 Скопируйте `.env.example` в `.env.local` и заполните ключи:
 
 ```env
-# AI Provider — "openrouter" (default) or "claude"
-AI_PROVIDER=openrouter
+# AI Provider — "openai" (default), "openrouter", or "claude"
+AI_PROVIDER=openai
 
-# OpenRouter (needed when AI_PROVIDER=openrouter)
+# OpenAI (primary provider — default when AI_PROVIDER=openai)
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+
+# OpenRouter (alternative, set AI_PROVIDER=openrouter to use)
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=google/gemma-4-31b-it:free
 
-# Claude / Anthropic (needed when AI_PROVIDER=claude)
+# Claude / Anthropic (alternative, set AI_PROVIDER=claude to use)
 ANTHROPIC_API_KEY=
 CLAUDE_MODEL=claude-3-5-sonnet-latest
 
@@ -63,13 +67,25 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
 > `SUPABASE_SERVICE_ROLE_KEY` используется исключительно на сервере (`src/lib/supabase/server.ts`). Никогда не передаётся в браузер.
+> API-ключи AI-провайдеров (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`) — только серверные. Никогда не добавляйте их с префиксом `NEXT_PUBLIC_`.
 
 ## Switching AI provider
 
 AI-провайдер переключается через переменную `AI_PROVIDER`.  
 P&L и Goldratt промпты не меняются — оба агента используют общий provider layer.
 
-### OpenRouter (default)
+### OpenAI (default)
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
+`OPENAI_MODEL` необязателен — без него используется `gpt-4o-mini`.  
+Если `AI_PROVIDER=openai`, но `OPENAI_API_KEY` не задан — API вернёт `NOT_CONFIGURED`.
+
+### OpenRouter (alternative)
 
 ```env
 AI_PROVIDER=openrouter
@@ -78,7 +94,7 @@ OPENROUTER_MODEL=google/gemma-4-31b-it:free
 ```
 
 OpenRouter поддерживает бесплатные модели, но они нестабильны на free tier.  
-Для production используйте платную модель через OpenRouter или переключитесь на Claude.
+Для production используйте платную модель через OpenRouter или переключитесь на OpenAI.
 
 ### Claude / Anthropic
 
@@ -90,27 +106,26 @@ CLAUDE_MODEL=claude-3-5-sonnet-latest
 
 `CLAUDE_MODEL` необязателен — без него используется `claude-3-5-sonnet-latest`.
 
-Если `AI_PROVIDER=claude`, но `ANTHROPIC_API_KEY` не задан, приложение не делает silent fallback на OpenRouter: API вернёт `NOT_CONFIGURED`, а в server logs появится запись `[AI] provider=claude missing ANTHROPIC_API_KEY`.
+Если `AI_PROVIDER=claude`, но `ANTHROPIC_API_KEY` не задан, приложение не делает silent fallback: API вернёт `NOT_CONFIGURED`, а в server logs появится запись `[AI] provider=claude missing ANTHROPIC_API_KEY`.
 
 **После изменения env:**
 - Локально — перезапустите dev server (`npm run dev`)
 - Vercel — нажмите Redeploy в панели управления
 
-### How To Hand Off Claude
+### Handoff для другого разработчика
 
-Для следующего разработчика достаточно выставить env:
+Для передачи проекта достаточно выставить env:
 
 ```env
-AI_PROVIDER=claude
-ANTHROPIC_API_KEY=...
-CLAUDE_MODEL=claude-3-5-sonnet-latest
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
 NEXT_PUBLIC_SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 NEXT_PUBLIC_SITE_URL=...
 ```
 
-- Если после перезапуска в логах запросов provider всё ещё `openrouter`, значит env не применился.
-- У текущего владельца проекта локально может оставаться OpenRouter. Это нормально.
+- Если после перезапуска в логах provider всё ещё другой, значит env не применился.
 - Excel quality gate, preview и hard block работают до AI и не зависят от выбранной модели.
 
 Supabase env остаются теми же при любом провайдере.
@@ -265,8 +280,15 @@ export interface AIProvider {
 
 | `AI_PROVIDER` | Реализация | Ключ |
 |---|---|---|
-| `openrouter` (default) | `OpenRouterProvider` | `OPENROUTER_API_KEY` |
+| `openai` (default) | `OpenAIProvider` | `OPENAI_API_KEY` |
+| `openrouter` | `OpenRouterProvider` | `OPENROUTER_API_KEY` |
 | `claude` | `ClaudeProvider` | `ANTHROPIC_API_KEY` |
+
+### Подключить OpenAI (default)
+
+1. Добавьте `OPENAI_API_KEY=sk-...` в `.env.local`
+2. Установите `AI_PROVIDER=openai` (или оставьте пустым — openai используется по умолчанию)
+3. Перезапустите dev server
 
 ### Подключить Claude
 
@@ -279,7 +301,7 @@ export interface AIProvider {
 - **Next.js 16** App Router + TypeScript
 - **Tailwind CSS v4** + shadcn/ui + lucide-react
 - **react-markdown** + remark-gfm
-- **Claude / Anthropic** или **OpenRouter** — AI-провайдер через общий provider layer
+- **OpenAI** (default) / **OpenRouter** / **Claude** — AI-провайдер через общий provider layer
 - **Supabase** — PostgreSQL база данных для хранения отчётов
 
 ## Обработка ошибок
@@ -342,7 +364,11 @@ npx vercel --prod
 
 ```env
 # Выбор провайдера (обязательно)
-AI_PROVIDER=openrouter
+AI_PROVIDER=openai
+
+# OpenAI — заполнить если AI_PROVIDER=openai (рекомендуется)
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 
 # OpenRouter — заполнить если AI_PROVIDER=openrouter
 OPENROUTER_API_KEY=
@@ -358,8 +384,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ```
 
-- Если используется OpenRouter — Claude env можно оставить пустыми
-- Если используется Claude — OpenRouter env можно оставить пустыми
+- Заполняйте только env для выбранного AI_PROVIDER — остальные можно оставить пустыми
 - Supabase env нужны всегда для сохранения отчётов
 
 ### Production note

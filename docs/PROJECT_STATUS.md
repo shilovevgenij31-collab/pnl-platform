@@ -89,7 +89,7 @@ error_message TEXT
 / → выбор агента → /analyze?agent=pnl|goldratt
 → POST /api/analyze (с agentType)
     ├── выбор system prompt по agentType
-    ├── AI генерирует отчёт (Claude или OpenRouter — зависит от `AI_PROVIDER`)
+    ├── AI генерирует отчёт (OpenAI по умолчанию — зависит от `AI_PROVIDER`)
     └── Supabase: сохранение с agent_type → { id }
 → /report/[id] (header/badge по agentType)
 ```
@@ -100,25 +100,31 @@ error_message TEXT
 
 | `AI_PROVIDER` | Реализация | Файл |
 |---|---|---|
-| `openrouter` (default) | `OpenRouterProvider` | `src/lib/ai/openrouter.ts` |
+| `openai` (default) | `OpenAIProvider` | `src/lib/ai/openai.ts` |
+| `openrouter` | `OpenRouterProvider` | `src/lib/ai/openrouter.ts` |
 | `claude` | `ClaudeProvider` | `src/lib/ai/claude.ts` |
 
 Фабрика `createAIProvider()` в `src/lib/ai/index.ts` — логика выбора.  
-Если `AI_PROVIDER` пустой → OpenRouter. Если неизвестный → warning + OpenRouter.
+Если `AI_PROVIDER` пустой → OpenAI. Если неизвестный → warning + OpenRouter.
+
+**Чтобы подключить OpenAI (default):**
+1. Добавить `OPENAI_API_KEY=sk-...`
+2. Установить `AI_PROVIDER=openai` (или оставить пустым)
+3. Перезапустить dev server
 
 **Чтобы подключить Claude:**
 1. Добавить `ANTHROPIC_API_KEY=sk-ant-...`
 2. Установить `AI_PROVIDER=claude` (опционально `CLAUDE_MODEL=...`)
 3. Перезапустить dev server или сделать Redeploy на Vercel
 
-Если `AI_PROVIDER=claude`, но `ANTHROPIC_API_KEY` отсутствует, система не делает silent fallback на OpenRouter. API возвращает `NOT_CONFIGURED`, а в server logs появляется `[AI] provider=claude missing ANTHROPIC_API_KEY`.
+Если задан `AI_PROVIDER`, но соответствующий API-ключ отсутствует, система не делает silent fallback. API возвращает `NOT_CONFIGURED`.
 
 Для передачи другому разработчику нужны env:
 
 ```env
-AI_PROVIDER=claude
-ANTHROPIC_API_KEY=...
-CLAUDE_MODEL=claude-3-5-sonnet-latest
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
 NEXT_PUBLIC_SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 NEXT_PUBLIC_SITE_URL=...
@@ -126,12 +132,10 @@ NEXT_PUBLIC_SITE_URL=...
 
 - После смены env локально нужен перезапуск `npm run dev`
 - После смены env на Vercel нужен Redeploy
-- Если в логах запросов provider всё ещё `openrouter`, значит новый env не применился
-- Текущий владелец проекта может локально использовать OpenRouter; Excel quality gate и hard block от этого не зависят
 
 P&L и Goldratt промпты менять не нужно — оба агента используют общий provider layer.
 
-Для production рекомендуется Claude или платная OpenRouter модель вместо free tier.
+Для production рекомендуется OpenAI с ключом или платная OpenRouter модель вместо free tier.
 
 ## Что пока не реализовано
 
@@ -215,7 +219,10 @@ P&L и Goldratt промпты менять не нужно — оба аген�
 ## Current env example
 
 ```env
-AI_PROVIDER=openrouter
+AI_PROVIDER=openai
+
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=google/gemma-4-31b-it:free
