@@ -41,10 +41,12 @@ function buildGoldrattUserPrompt(data: FormInput): string {
 
   lines.push('=== КОНТЕКСТ БИЗНЕСА ДЛЯ ПОИСКА ОГРАНИЧЕНИЯ ===', '')
 
-  if (data.company) lines.push(`Компания: ${data.company}`, '')
+  if (data.company) lines.push(`Компания: ${data.company}`)
+  if (data.businessType?.trim()) lines.push(`Тип бизнеса: ${data.businessType}`)
+  if (data.company || data.businessType?.trim()) lines.push('')
 
   if (data.whatDoYouSell?.trim()) {
-    lines.push('Чем занимается бизнес:', data.whatDoYouSell, '')
+    lines.push('Что продаёт и кому:', data.whatDoYouSell, '')
   }
 
   if (data.revenueMechanics?.trim()) {
@@ -52,15 +54,26 @@ function buildGoldrattUserPrompt(data: FormInput): string {
   }
 
   if (data.ownerDependency?.trim()) {
-    lines.push('Команда и роль собственника:', data.ownerDependency, '')
+    lines.push('Команда:', data.ownerDependency, '')
+  }
+
+  const hasMargin = data.currentMargin?.trim() || data.targetMargin?.trim()
+  if (hasMargin) {
+    if (data.currentMargin?.trim()) lines.push(`Текущая рентабельность: ${data.currentMargin}`)
+    if (data.targetMargin?.trim()) lines.push(`Целевая рентабельность: ${data.targetMargin}`)
+    lines.push('')
   }
 
   if (data.mainPain?.trim()) {
     lines.push('Главная боль:', data.mainPain, '')
   }
 
+  if (data.bottleneckGuess?.trim()) {
+    lines.push('Где предприниматель сам видит бутылочное горлышко:', data.bottleneckGuess, '')
+  }
+
   if (data.founderPlan?.trim()) {
-    lines.push('Как предприниматель сам видит решение:', data.founderPlan, '')
+    lines.push('Как предприниматель предлагает исправлять проблему:', data.founderPlan, '')
   }
 
   if (data.pnlText?.trim()) {

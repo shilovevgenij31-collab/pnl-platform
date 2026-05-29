@@ -128,6 +128,8 @@ const GOLDRATT_TEST_FILL: Partial<AnalyzeFormFields> = {
   planningHorizon: 'Ближайший квартал с фокусом на второе полугодие.',
   competingPriorities: 'AI-решения, YouTube, упаковка, клиентские проекты, новые гипотезы и перестройка команды конкурируют за внимание.',
   highestImpactDecision: 'Выбрать один главный поток денег на 30 дней и временно заморозить остальное.',
+  bottleneckGuess: 'Продажи и собственник. Антон сам продаёт и ведёт ключевые проекты — все ключевые решения проходят через него.',
+  founderPlan: 'Выбрать одно направление на 30 дней, делегировать операционку партнёру, сосредоточиться на продажах AI-решений как самом быстром потоке.',
 }
 
 // ─── File extensions ───────────────────────────────────────────────────────────
@@ -625,8 +627,8 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
         return
       }
     } else {
-      if (!form.company?.trim()) { setError('Укажите название компании или проекта.'); return }
-      if (!form.whatDoYouSell?.trim()) { setError('Опишите, чем занимается бизнес.'); return }
+      if (!form.businessType?.trim()) { setError('Укажите тип бизнеса.'); return }
+      if (!form.whatDoYouSell?.trim()) { setError('Опишите, что продаёте и кому.'); return }
       if (!form.mainPain?.trim()) { setError('Опишите главную боль: что мешает зарабатывать больше прямо сейчас.'); return }
     }
 
@@ -2057,9 +2059,9 @@ function GoldrattSection({
         className="rounded-2xl border px-4 py-3.5 text-sm leading-relaxed"
         style={{ background: '#FBFCFE', borderColor: BORDER, color: TEXT2 }}
       >
-        <p className="text-sm font-semibold" style={{ color: TEXT }}>Контекст для поиска ограничения</p>
+        <p className="text-sm font-semibold" style={{ color: TEXT }}>Ответьте на несколько вопросов</p>
         <p className="mt-1.5">
-          Ответьте на несколько вопросов — достаточно того, что знаете сейчас. Документ не обязателен.
+          Не нужен идеальный отчёт. Достаточно коротко описать бизнес, предполагаемое узкое место и решение, которое вы уже рассматриваете.
         </p>
       </div>
 
@@ -2073,65 +2075,106 @@ function GoldrattSection({
         focusStyle={focusStyle}
       />
 
+      <Field
+        label="Тип бизнеса *"
+        value={form.businessType}
+        onChange={(v) => setField('businessType', v)}
+        placeholder="Например: агентство, производство, сервис, торговля, онлайн-школа."
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+        focusStyle={focusStyle}
+      />
+
       <TextArea
-        label="Чем занимается бизнес? *"
+        label="Что продаёте и кому? *"
         value={form.whatDoYouSell}
         onChange={(v) => setField('whatDoYouSell', v)}
-        placeholder="Например: агентство, производство, сервис, торговля, онлайн-школа. Что продаёте и кому?"
+        placeholder="Коротко: какой продукт или услуга, кто клиент, за что платят деньги."
         rows={3}
         inputCls={inputCls}
         inputStyle={inputStyle}
       />
 
       <TextArea
-        label="Откуда сейчас приходит выручка?"
+        label="Основные источники выручки"
         value={form.revenueMechanics}
         onChange={(v) => setField('revenueMechanics', v)}
-        placeholder="Опишите 1–3 главных потока: услуги, продукты, проекты, абонентка, продажи, партнёрки."
+        placeholder="Опишите 1–3 главных потока: услуги, продукты, проекты, абонентка, партнёрки."
         rows={3}
         inputCls={inputCls}
         inputStyle={inputStyle}
       />
 
       <TextArea
-        label="Кто сейчас держит продажи, операционку и решения?"
+        label="Команда"
         value={form.ownerDependency}
         onChange={(v) => setField('ownerDependency', v)}
-        placeholder="Например: собственник сам продаёт и управляет проектами; есть 2 менеджера; операционка на команде."
+        placeholder="Кто есть в команде? Кто на окладе, кто сдельно, кто на подряде? Что держит собственник?"
         rows={3}
         inputCls={inputCls}
         inputStyle={inputStyle}
       />
 
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label="Текущая рентабельность по ощущению"
+          value={form.currentMargin}
+          onChange={(v) => setField('currentMargin', v)}
+          placeholder="Например: 10%"
+          inputCls={inputCls}
+          inputStyle={inputStyle}
+          focusStyle={focusStyle}
+        />
+        <Field
+          label="Целевая рентабельность"
+          value={form.targetMargin}
+          onChange={(v) => setField('targetMargin', v)}
+          placeholder="Например: 25%"
+          inputCls={inputCls}
+          inputStyle={inputStyle}
+          focusStyle={focusStyle}
+        />
+      </div>
+
       <TextArea
-        label="Что сильнее всего мешает расти или зарабатывать больше? *"
+        label="Главная боль прямо сейчас *"
         value={form.mainPain}
         onChange={(v) => setField('mainPain', v)}
-        placeholder="Например: мало заявок, просели продажи, собственник перегружен, проекты не завершаются, маржа падает."
+        placeholder="Одним предложением: что сильнее всего мешает расти, зарабатывать больше или стабильно получать прибыль?"
         rows={4}
+        inputCls={inputCls}
+        inputStyle={inputStyle}
+      />
+
+      <TextArea
+        label="Где, как вы думаете, бутылочное горлышко?"
+        value={form.bottleneckGuess}
+        onChange={(v) => setField('bottleneckGuess', v)}
+        placeholder="Например: продажи, заявки, собственник, команда, производство, согласования, операционка, маркетинг."
+        rows={3}
         inputCls={inputCls}
         inputStyle={inputStyle}
       />
 
       <div>
         <TextArea
-          label="Как вы сами сейчас видите решение?"
+          label="Как вы предлагаете исправлять проблему?"
           value={form.founderPlan ?? ''}
           onChange={(v) => setField('founderPlan', v)}
-          placeholder="Например: нанять человека, усилить маркетинг, сократить расходы, закрыть проект, сфокусироваться на продажах."
+          placeholder="Например: нанять человека, усилить рекламу, сократить расходы, закрыть направление, сфокусироваться на продажах."
           rows={3}
           inputCls={inputCls}
           inputStyle={inputStyle}
         />
         <p className="mt-1.5 text-xs" style={{ color: '#94A3B8' }}>
-          AI проверит ваш план через Теорию ограничений: работает ли он на главное ограничение или оптимизирует не то место.
+          AI проверит: работает ли ваше решение на главное ограничение или оптимизирует не то место.
         </p>
       </div>
 
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <label className="block text-sm" style={{ color: TEXT2 }}>
-            Документ (необязательно)
+            Документ — если есть
           </label>
           <a
             href={GOLDRATT_TEMPLATE_URL}
@@ -2144,10 +2187,10 @@ function GoldrattSection({
           </a>
         </div>
         <p className="mb-2 text-xs leading-relaxed" style={{ color: TEXT2 }}>
-          Можно приложить документ, если он есть: P&L, CRM, список проектов, описание процесса или заметки. Это не обязательно — анализ можно запустить по ответам выше.
+          Можно приложить P&L, CRM, список проектов, описание процесса или заметки. Это необязательно: анализ можно запустить только по ответам выше.
         </p>
         <p className="mb-3 text-xs" style={{ color: '#94A3B8' }}>
-          Расширенный шаблон не обязателен. Нужен, если хотите структурировать процесс, этапы и загрузку команды.
+          Расширенный шаблон не обязателен. Нужен, если хотите структурировать этапы, роли и загрузку команды.
         </p>
         <FileUploadZone
           variant="goldratt"
