@@ -738,50 +738,101 @@ function extractTargetMargin(report: string): number | null {
 
 const MONTH_CELL_RE = /январ|феврал|март|апрел|\bмай\b|июн|июл|август|сентябр|октябр|ноябр|декабр|q[1-4]|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec/i
 const PERIOD_CELL_RE = /20\d{2}|\d{1,2}\.\d{4}|\d{2}\.\d{2}/
+// Exact итого cell (e.g. header "Итого") — loose version allows "Итого WB" etc.
 const TOTAL_CELL_RE = /^итого$|^всего$|^total$|^итог$|^∑$|^итого:$/i
+const TOTAL_CELL_LOOSE_RE = /^итого\b|^всего\b|^total\b/i
+// Marketplace channel names (WB/OZON/Wildberries/etc)
+const CHANNEL_RE = /^wb$|^ozon$|^wildberries$|^wb\.ru$|^ozon\.ru$|^озон$|^маркетплейс\b/i
 
-/** Returns indices of "Итого/Total" subcolumns (WB/OZON pattern). Empty if not detected. */
-function findTotalColumns(rows: string[][]): number[] {
-  for (const row of rows.slice(0, 8)) {
-    const cols = row.map((cell, i) => (i >= 1 && TOTAL_CELL_RE.test(cell.trim())) ? i : -1).filter(i => i >= 0)
-    if (cols.length >= 2) return cols
-  }
-  return []
+// One column group per period/month in the P&L
+interface MonthGroup {
+  label: string
+  totalIndex: number   // ≥0 if explicit "Итого" column exists; -1 = sum subIndices
+  subIndices: number[] // WB+OZON indices to sum when totalIndex === -1
 }
 
-/** Returns the best header row with month labels and the column indices where months appear. */
-function findMonthHeaderRow(rows: string[][]): { labels: string[]; indices: number[] } {
+/**
+ * Detects month-column groups from multi-row Excel headers.
+ * Handles three structures:
+ *   A) Month → [WB | OZON | Итого]  →  use Итого column
+ *   B) Month → [WB | OZON]          →  sum WB+OZON
+ *   C) Month (no subcolumns)        →  use month column directly
+ * Falls back to columns 2+ of row 0 when no month row found.
+ */
+function detectMonthGroups(rows: string[][]): MonthGroup[] {
+  // Find the row with the most month/period cells (scan first 10 rows)
+  let monthRowIdx = -1
   let bestCount = 0
-  let bestLabels: string[] = []
-  let bestIndices: number[] = []
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const count = rows[i].filter((c, j) => j >= 1 && (MONTH_CELL_RE.test(c) || PERIOD_CELL_RE.test(c))).length
+    if (count > bestCount) { bestCount = count; monthRowIdx = i }
+  }
 
-  for (const row of rows.slice(0, 8)) {
-    const indices: number[] = []
-    const labels: string[] = []
-    row.forEach((cell, i) => {
-      if (i >= 1 && (MONTH_CELL_RE.test(cell) || PERIOD_CELL_RE.test(cell))) {
-        indices.push(i)
-        labels.push(cell.trim())
+  // Fallback: treat cols 2+ of row 0 as individual month columns
+  if (monthRowIdx < 0 || bestCount < 1) {
+    const fallbackCols = (rows[0] ?? []).slice(2).map((c, i) => ({ cell: c.trim(), idx: i + 2 })).filter(x => x.cell)
+    return fallbackCols.map(({ cell, idx }) => ({ label: cell, totalIndex: idx, subIndices: [] }))
+  }
+
+  const monthRow = rows[monthRowIdx]
+  const channelRow = rows[monthRowIdx + 1] ?? []
+
+  const monthPositions: { idx: number; label: string }[] = []
+  monthRow.forEach((cell, i) => {
+    if (i >= 1 && (MONTH_CELL_RE.test(cell) || PERIOD_CELL_RE.test(cell)))
+      monthPositions.push({ idx: i, label: cell.trim() })
+  })
+  if (monthPositions.length === 0) return []
+
+  const groups: MonthGroup[] = []
+  for (let m = 0; m < monthPositions.length; m++) {
+    const { idx: startIdx, label } = monthPositions[m]
+    const endIdx = monthPositions[m + 1]?.idx ?? monthRow.length
+
+    let totalIdx = -1
+    const channelIndices: number[] = []
+
+    for (let i = startIdx; i < endIdx; i++) {
+      const cell = (channelRow[i] ?? '').trim()
+      if (TOTAL_CELL_RE.test(cell) || TOTAL_CELL_LOOSE_RE.test(cell)) {
+        if (totalIdx < 0) totalIdx = i   // first "Итого" wins
+      } else if (CHANNEL_RE.test(cell)) {
+        // WB/OZON can appear at startIdx (first subcolumn) or after it
+        channelIndices.push(i)
       }
-    })
-    if (indices.length > bestCount) {
-      bestCount = indices.length
-      bestIndices = indices
-      bestLabels = labels
+    }
+
+    if (totalIdx >= 0) {
+      groups.push({ label, totalIndex: totalIdx, subIndices: [] })
+    } else if (channelIndices.length >= 2) {
+      // No explicit Итого — sum WB+OZON
+      groups.push({ label, totalIndex: -1, subIndices: channelIndices })
+    } else {
+      // No subcolumns at all — the month column itself is the total
+      groups.push({ label, totalIndex: startIdx, subIndices: [] })
     }
   }
-
-  if (bestCount >= 2) return { labels: bestLabels, indices: bestIndices }
-  // fallback: row 0 cells from index 2 that are non-empty
-  const fallback = (rows[0] ?? []).slice(2).map((c, i) => ({ cell: c.trim(), idx: i + 2 })).filter(x => x.cell)
-  return { labels: fallback.map(x => x.cell), indices: fallback.map(x => x.idx) }
+  return groups
 }
 
-/** Extract numeric series using explicit column indices, or from col 2+ if indices empty. */
-function parseSeriesByIndices(row: string[] | null, indices: number[]): number[] {
-  if (!row) return []
-  const cols = indices.length >= 2 ? indices : row.map((_, i) => i).slice(2)
-  return cols.map(i => parseNumber(row[i] ?? '')).filter((v): v is number => v !== null)
+/** Extract a single total value for one month group from a data row. */
+function getGroupValue(row: string[] | null, group: MonthGroup): number | null {
+  if (!row) return null
+  if (group.totalIndex >= 0) return parseNumber(row[group.totalIndex] ?? '')
+  const vals = group.subIndices.map(i => parseNumber(row[i] ?? '')).filter((v): v is number => v !== null)
+  return vals.length > 0 ? vals.reduce((a, b) => a + b) : null
+}
+
+/** Extract a numeric series (one value per month) from a data row using detected groups. */
+function parseSeriesFromGroups(row: string[] | null, groups: MonthGroup[]): number[] {
+  if (!row || groups.length === 0) return []
+  return groups.map(g => getGroupValue(row, g)).filter((v): v is number => v !== null)
+}
+
+/** Compute mean from a series of numbers extracted via groups (null if empty). */
+function avgFromSeries(series: number[]): number | null {
+  if (series.length === 0) return null
+  return Math.round(series.reduce((a, b) => a + b) / series.length)
 }
 
 /** Two-pass findRow: try specific synonyms first, fall back to general ones. */
@@ -791,109 +842,142 @@ function findRowRobust(source: ParsedSource | null, specific: string[], general:
 
 function buildPnlFacts(report: string, source: ParsedSource | null, sections: ReportSection[]): PnlFacts {
   const rows = source?.rows ?? []
-  const totalCols = findTotalColumns(rows)
-  const monthInfo = findMonthHeaderRow(rows)
-  const seriesIndices = totalCols.length >= 2 ? totalCols : monthInfo.indices
 
-  // Expanded row detection with two-pass: specific first, then general
+  // Detect month groups (handles WB/OZON/Итого and sum-of-channels structures)
+  const groups = detectMonthGroups(rows)
+
+  // ── Row detection (two-pass: specific synonyms first, then general) ──────────
+
   const revenueRow = findRowRobust(source,
-    ['итого выручка', 'выручка итого', 'выручка / оборот', 'выручка/оборот', 'оборот / выручка', 'итого оборот', 'общая выручка', 'товарооборот'],
+    ['итого выручка', 'выручка итого', 'выручка / оборот', 'выручка/оборот', 'оборот / выручка',
+     'итого оборот', 'общая выручка', 'товарооборот', 'валовая выручка', 'выручка (органика'],
     ['выручка', 'оборот', 'продажи', 'доход', 'реализация', 'revenue', 'sales'],
   )
   const profitRow = findRowRobust(source,
-    ['чистая прибыль', 'прибыль/убыток', 'прибыль / убыток', 'итого прибыль', 'прибыль итого', 'прибыль до налогов'],
+    ['чистая прибыль', 'прибыль/убыток', 'прибыль / убыток', 'итого прибыль', 'прибыль итого',
+     'прибыль до налогов', 'прибыль после', 'итого п/у'],
     ['прибыль', 'ebitda', 'операционная прибыль', 'net profit'],
   )
   const costRow = findRowRobust(source,
-    ['операционные расходы', 'итого расходы', 'итого затраты', 'всего расходов', 'общие расходы', 'расходы итого'],
+    ['операционные расходы', 'итого расходы', 'итого затраты', 'всего расходов',
+     'общие расходы', 'расходы итого', 'итого по расходам'],
     ['расходы', 'затраты', 'себестоимость', 'cost', 'expense'],
   )
   const marginRow = findRowRobust(source,
     ['рентабельность по чп', 'чистая рентабельность', 'рентабельность чп', 'рентаб. чп'],
     ['рентабельность', 'маржа', 'прибыль %', 'margin'],
   )
-  const rentRow = findRow(source, ['аренда'])
-  const salaryRow = findRow(source, ['зарплата', 'фот', 'оплата труда', 'payroll'])
+  // Expense breakdown rows — generic + marketplace-specific
   const managementRow = findRow(source, ['расходы на ук', 'управляющая компания', 'ук '])
-  const productsRow = findRow(source, ['расходы на продукты', 'себестоимость товаров', 'cogs'])
+  const salaryRow    = findRow(source, ['зарплата', 'фот', 'оплата труда', 'payroll'])
+  const rentRow      = findRow(source, ['аренда'])
+  const logisticsRow = findRow(source, ['логистика', 'логистические расходы', 'доставка товара'])
+  const storageRow   = findRow(source, ['хранение', 'складские расходы'])
+  const commissionRow= findRow(source, ['комиссия wb', 'комиссия ozon', 'комиссия маркетплейса',
+                                        'комиссии платформы', 'торговая комиссия', 'комиссионное'])
+  const advertisingRow = findRow(source, ['реклама', 'рекламные расходы', 'маркетинг', 'продвижение'])
+  const productsRow  = findRow(source, ['расходы на продукты', 'себестоимость товаров', 'закупка товаров',
+                                        'стоимость товаров', 'cogs'])
   const utilitiesRow = findRow(source, ['коммунальные', 'utilities'])
-  const rentPctRow = findRow(source, ['аренда %'])
-  const salaryPctRow = findRow(source, ['зарплата %', 'фот %'])
-  const overview = findSection(sections, ['overview', 'metrics'], ['резюме', 'краткое'])
+
+  const overview   = findSection(sections, ['overview', 'metrics'], ['резюме', 'краткое'])
   const constraint = findSection(sections, ['constraint'], ['ограничение', 'bottleneck'])
-  const limitations = findSection(sections, ['limitations'], ['не хватает', 'ограничения'])
-  const actions = findSection(sections, ['actions'], ['план', 'рекомендации'])
-  const scenarios = findSection(sections, ['scenarios'], ['сценарии'])
-  const anomalies = findSection(sections, ['anomalies'], ['аномалии'])
+  const limitations= findSection(sections, ['limitations'], ['не хватает', 'ограничения'])
+  const actions    = findSection(sections, ['actions'], ['план', 'рекомендации'])
+  const scenarios  = findSection(sections, ['scenarios'], ['сценарии'])
+  const anomalies  = findSection(sections, ['anomalies'], ['аномалии'])
 
-  // Month labels: use detected header row; fall back to row[0] slice(2)
-  const monthLabels = monthInfo.labels.length >= 2
-    ? monthInfo.labels
-    : (source?.rows[0]?.slice(2).filter(c => c.trim()) ?? [])
+  // ── Build per-month data ─────────────────────────────────────────────────────
 
-  // Series: use total columns when WB/OZON detected, else from col 2+
-  const revenueSeries = parseSeriesByIndices(revenueRow, seriesIndices)
-  const profitSeries = parseSeriesByIndices(profitRow, seriesIndices)
+  // Align revenue + profit by month group; keep months where at least one is known
+  const perMonth = groups.map(g => ({
+    label: g.label,
+    revenue: getGroupValue(revenueRow, g),
+    profit:  getGroupValue(profitRow,  g),
+  })).filter(d => d.revenue !== null || d.profit !== null)
 
-  // Average: if we have explicit series columns, compute mean; else use col[1] (demo format avg column)
-  function avgOfSeries(row: string[] | null, series: number[]): number | null {
-    if (seriesIndices.length >= 2 && series.length > 0) {
-      const nonZero = series.filter(v => v !== 0)
-      return nonZero.length > 0 ? Math.round(nonZero.reduce((a, b) => a + b) / nonZero.length) : null
-    }
-    return parseNumber(row?.[1] ?? '')
+  const monthLabels   = perMonth.map(d => d.label)
+  const revenueSeries = perMonth.map(d => d.revenue ?? 0)
+  const profitSeries  = perMonth.map(d => d.profit  ?? 0)
+
+  // Average / last values — use series when available, fall back to col[1] for demo format
+  const avgRevenue = perMonth.length > 0
+    ? avgFromSeries(perMonth.map(d => d.revenue).filter((v): v is number => v !== null))
+    : parseNumber(revenueRow?.[1] ?? '')
+  const lastRevenue = perMonth.length > 0
+    ? (perMonth.at(-1)?.revenue ?? null)
+    : parseNumber(revenueRow?.at(-1) ?? '')
+
+  const avgProfit = perMonth.length > 0
+    ? avgFromSeries(perMonth.map(d => d.profit).filter((v): v is number => v !== null))
+    : parseNumber(profitRow?.[1] ?? '')
+  const lastProfit = perMonth.length > 0
+    ? (perMonth.at(-1)?.profit ?? null)
+    : parseNumber(profitRow?.at(-1) ?? '')
+
+  const costSeries = groups.length > 0
+    ? parseSeriesFromGroups(costRow, groups)
+    : []
+  const avgCosts = costSeries.length > 0
+    ? avgFromSeries(costSeries)
+    : parseNumber(costRow?.[1] ?? '')
+
+  // If no explicit cost row, derive from revenue - profit
+  const avgCostsDerived = avgCosts !== null ? avgCosts
+    : (avgRevenue !== null && avgProfit !== null ? avgRevenue - avgProfit : null)
+
+  // Margin — prefer explicit margin row, else derive
+  const marginSeries = groups.length > 0 ? parseSeriesFromGroups(marginRow, groups) : []
+  const avgMargin = marginSeries.length > 0
+    ? avgFromSeries(marginSeries)
+    : parsePercent(marginRow?.[1] ?? '') ?? (
+        avgRevenue !== null && avgRevenue > 0 && avgProfit !== null
+          ? Math.round((avgProfit / avgRevenue) * 100 * 10) / 10
+          : null
+      )
+  const lastMargin = marginSeries.length > 0
+    ? (marginSeries.at(-1) ?? null)
+    : parsePercent(marginRow?.at(-1) ?? '')
+
+  const targetMargin = extractTargetMargin(report)
+  const breakevenRevenue = avgCostsDerived
+  const gapToBreakeven = avgRevenue !== null && breakevenRevenue !== null ? breakevenRevenue - avgRevenue : null
+
+  // Profitable/loss months — only count months with known profit
+  const knownProfitMonths = perMonth.filter(d => d.profit !== null)
+  const profitableMonths = knownProfitMonths.filter(d => (d.profit ?? 0) > 0).length
+  const totalMonths = knownProfitMonths.length
+
+  const minValue = profitSeries.length > 0 ? Math.min(...profitSeries) : null
+  const maxValue = profitSeries.length > 0 ? Math.max(...profitSeries) : null
+  const minIdx   = minValue !== null ? profitSeries.indexOf(minValue) : -1
+  const maxIdx   = maxValue !== null ? profitSeries.indexOf(maxValue) : -1
+
+  // ── Expense breakdown ────────────────────────────────────────────────────────
+
+  function makeExpenseItem(label: string, row: string[] | null, tone: Tone): ExpenseItem {
+    const amount = groups.length > 0
+      ? avgFromSeries(parseSeriesFromGroups(row, groups))
+      : parseNumber(row?.[1] ?? '')
+    const pct = amount !== null && avgRevenue && avgRevenue > 0
+      ? Math.round((amount / avgRevenue) * 100)
+      : null
+    return { label, amount, pct, tone }
   }
 
-  const avgRevenue = avgOfSeries(revenueRow, revenueSeries)
-  const lastRevenue = revenueSeries.length > 0 ? (revenueSeries.at(-1) ?? null) : parseNumber(revenueRow?.at(-1) ?? '')
-  const avgProfit = avgOfSeries(profitRow, profitSeries)
-  const lastProfit = profitSeries.length > 0 ? (profitSeries.at(-1) ?? null) : parseNumber(profitRow?.at(-1) ?? '')
-  const avgCosts = avgOfSeries(costRow, parseSeriesByIndices(costRow, seriesIndices))
-  const avgMargin = parsePercent(marginRow?.[1] ?? '')
-  const lastMargin = parsePercent(marginRow?.at(-1) ?? '')
-  const targetMargin = extractTargetMargin(report)
-  const breakevenRevenue = avgCosts
-  const gapToBreakeven = avgRevenue !== null && breakevenRevenue !== null ? breakevenRevenue - avgRevenue : null
-  const profitableMonths = profitSeries.filter((value) => value > 0).length
-  const totalMonths = profitSeries.length
-  const hasCompleteSeries = profitSeries.length > 0 && revenueSeries.length === profitSeries.length && monthLabels.length === profitSeries.length
-  const minValue = hasCompleteSeries ? Math.min(...profitSeries) : null
-  const maxValue = hasCompleteSeries ? Math.max(...profitSeries) : null
-  const minIdx = minValue !== null ? profitSeries.indexOf(minValue) : -1
-  const maxIdx = maxValue !== null ? profitSeries.indexOf(maxValue) : -1
-
   const expenseBreakdown: ExpenseItem[] = [
-    {
-      label: 'Расходы на УК',
-      amount: parseNumber(managementRow?.[1] ?? ''),
-      pct: managementRow?.[1] && avgRevenue ? Math.round(((parseNumber(managementRow[1]) ?? 0) / avgRevenue) * 100) : null,
-      tone: 'red' as Tone,
-    },
-    {
-      label: 'ФОТ',
-      amount: parseNumber(salaryRow?.[1] ?? ''),
-      pct: parsePercent(salaryPctRow?.[1] ?? '') ?? (salaryRow?.[1] && avgRevenue ? Math.round(((parseNumber(salaryRow[1]) ?? 0) / avgRevenue) * 100) : null),
-      tone: 'red' as Tone,
-    },
-    {
-      label: 'Аренда',
-      amount: parseNumber(rentRow?.[1] ?? ''),
-      pct: parsePercent(rentPctRow?.[1] ?? '') ?? (rentRow?.[1] && avgRevenue ? Math.round(((parseNumber(rentRow[1]) ?? 0) / avgRevenue) * 100) : null),
-      tone: 'amber' as Tone,
-    },
-    {
-      label: 'Продукты',
-      amount: parseNumber(productsRow?.[1] ?? ''),
-      pct: productsRow?.[1] && avgRevenue ? Math.round(((parseNumber(productsRow[1]) ?? 0) / avgRevenue) * 100) : null,
-      tone: 'blue' as Tone,
-    },
-    {
-      label: 'Коммунальные',
-      amount: parseNumber(utilitiesRow?.[1] ?? ''),
-      pct: utilitiesRow?.[1] && avgRevenue ? Math.round(((parseNumber(utilitiesRow[1]) ?? 0) / avgRevenue) * 100) : null,
-      tone: 'slate' as Tone,
-    },
-  ].filter((item) => item.amount !== null || item.pct !== null)
+    makeExpenseItem('Управляющая компания', managementRow, 'red'),
+    makeExpenseItem('ФОТ',                  salaryRow,     'red'),
+    makeExpenseItem('Аренда',               rentRow,       'amber'),
+    makeExpenseItem('Логистика',            logisticsRow,  'amber'),
+    makeExpenseItem('Комиссия площадки',    commissionRow, 'amber'),
+    makeExpenseItem('Хранение',             storageRow,    'slate'),
+    makeExpenseItem('Реклама',              advertisingRow,'blue'),
+    makeExpenseItem('Себестоимость товаров',productsRow,   'red'),
+    makeExpenseItem('Коммунальные',         utilitiesRow,  'slate'),
+  ].filter(item => item.amount !== null || item.pct !== null)
+
+  // ── AI-report derived fields ─────────────────────────────────────────────────
 
   const mainDiagnosis = extractPreferredSentence(
     overview?.content ?? report,
@@ -906,47 +990,47 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
     'Главное ограничение прибыли — постоянная расходная база, которая требует более высокой выручки для безубыточности.',
   ))
   const limitationCandidates = (limitations?.content ?? '')
-    .split('\n')
-    .map(cleanText)
-    .filter((line) => /не хватает|предваритель|не раскрыт|нет данных|огранич/i.test(line))
-  const limitationsList = uniqueBullets(
-    [
-      ...limitationCandidates.map(ruSanitize),
-      ...(source?.metadata['Предупреждения'] && source.metadata['Предупреждения'] !== 'нет'
-        ? source.metadata['Предупреждения'].split(';')
-        : []),
-    ],
-    5,
-  )
-  const actionList = uniqueBullets(
-    [
-      ...extractBullets(actions?.content ?? '', 5),
-      ...extractTableRows(actions?.content ?? '').map((row) => row.join(' — ')),
-    ],
-    5,
-  )
-  const scenarioList = uniqueBullets(
-    [
-      ...extractTableRows(scenarios?.content ?? '').map((row) => row.slice(0, 3).join(' — ')),
-      ...extractBullets(scenarios?.content ?? '', 4),
-    ],
-    4,
-  )
-  const anomalyList = uniqueBullets(
-    [
-      ...extractBullets(anomalies?.content ?? '', 5),
-      ...extractTableRows(anomalies?.content ?? '').map((row) => row.join(' — ')),
-    ],
-    5,
-  )
+    .split('\n').map(cleanText)
+    .filter(line => /не хватает|предваритель|не раскрыт|нет данных|огранич/i.test(line))
+  const limitationsList = uniqueBullets([
+    ...limitationCandidates.map(ruSanitize),
+    ...(source?.metadata['Предупреждения'] && source.metadata['Предупреждения'] !== 'нет'
+      ? source.metadata['Предупреждения'].split(';') : []),
+  ], 5)
+  const actionList = uniqueBullets([
+    ...extractBullets(actions?.content ?? '', 5),
+    ...extractTableRows(actions?.content ?? '').map(row => row.join(' — ')),
+  ], 5)
+  const scenarioList = uniqueBullets([
+    ...extractTableRows(scenarios?.content ?? '').map(row => row.slice(0, 3).join(' — ')),
+    ...extractBullets(scenarios?.content ?? '', 4),
+  ], 4)
+  const anomalyList = uniqueBullets([
+    ...extractBullets(anomalies?.content ?? '', 5),
+    ...extractTableRows(anomalies?.content ?? '').map(row => row.join(' — ')),
+  ], 5)
 
   if (profitSeries.length > 0 && monthLabels.length === profitSeries.length) {
-    const minValue = Math.min(...profitSeries)
-    const maxValue = Math.max(...profitSeries)
-    const minIdx = profitSeries.indexOf(minValue)
-    const maxIdx = profitSeries.indexOf(maxValue)
-    anomalyList.unshift(`Худший месяц: ${monthLabels[minIdx] ?? 'период'} — ${formatCurrency(minValue, true)}.`)
-    anomalyList.unshift(`Лучший месяц: ${monthLabels[maxIdx] ?? 'период'} — ${formatCurrency(maxValue, true)}.`)
+    const wMin = Math.min(...profitSeries)
+    const wMax = Math.max(...profitSeries)
+    const wMinIdx = profitSeries.indexOf(wMin)
+    const wMaxIdx = profitSeries.indexOf(wMax)
+    anomalyList.unshift(`Худший месяц: ${monthLabels[wMinIdx] ?? 'период'} — ${formatCurrency(wMin, true)}.`)
+    anomalyList.unshift(`Лучший месяц: ${monthLabels[wMaxIdx] ?? 'период'} — ${formatCurrency(wMax, true)}.`)
+  }
+
+  if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined' && localStorage.getItem('pnl_debug')) {
+    console.groupCollapsed('[PnlExtraction debug]')
+    console.log('groups:', groups)
+    console.log('revenueRow label:', revenueRow?.[0])
+    console.log('profitRow label:', profitRow?.[0])
+    console.log('costRow label:', costRow?.[0])
+    console.log('revenueSeries:', revenueSeries)
+    console.log('profitSeries:', profitSeries)
+    console.log('costSeries:', costSeries)
+    console.log('avgRevenue:', avgRevenue, 'avgProfit:', avgProfit, 'avgCosts:', avgCostsDerived)
+    console.log('totalMonths:', totalMonths, 'profitableMonths:', profitableMonths)
+    console.groupEnd()
   }
 
   return {
@@ -957,7 +1041,7 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
     avgMargin,
     lastMargin,
     targetMargin,
-    avgCosts,
+    avgCosts: avgCostsDerived,
     breakevenRevenue,
     gapToBreakeven,
     monthLabels,
@@ -966,18 +1050,18 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
     expenseBreakdown,
     profitableMonths,
     totalMonths,
-    bestMonthLabel: maxIdx >= 0 ? (monthLabels[maxIdx] ?? null) : null,
-    bestMonthRevenue: maxIdx >= 0 ? revenueSeries[maxIdx] ?? null : null,
-    bestMonthProfit: maxValue,
-    worstMonthLabel: minIdx >= 0 ? (monthLabels[minIdx] ?? null) : null,
-    worstMonthRevenue: minIdx >= 0 ? revenueSeries[minIdx] ?? null : null,
-    worstMonthProfit: minValue,
+    bestMonthLabel:   maxIdx >= 0 ? (monthLabels[maxIdx]   ?? null) : null,
+    bestMonthRevenue: maxIdx >= 0 ? (revenueSeries[maxIdx] ?? null) : null,
+    bestMonthProfit:  maxValue,
+    worstMonthLabel:   minIdx >= 0 ? (monthLabels[minIdx]   ?? null) : null,
+    worstMonthRevenue: minIdx >= 0 ? (revenueSeries[minIdx] ?? null) : null,
+    worstMonthProfit:  minValue,
     mainDiagnosis,
     mainConstraint,
     limitations: limitationsList,
-    actions: actionList,
-    scenarios: scenarioList,
-    anomalies: uniqueBullets(anomalyList, 5),
+    actions:     actionList,
+    scenarios:   scenarioList,
+    anomalies:   uniqueBullets(anomalyList, 5),
   }
 }
 
@@ -1531,21 +1615,21 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
     {
       id: 'trend-anomalies',
       title: 'Динамика и аномалии',
-      kicker: '18 месяцев',
+      kicker: facts.totalMonths > 0 ? `${facts.totalMonths} мес.` : 'Данные',
       tone: 'blue',
       icon: TrendingUp,
-      value: 'Прибыль появляется точечно, а не системно',
+      value: facts.totalMonths > 1 ? `${facts.profitableMonths} прибыльных из ${facts.totalMonths} месяцев` : 'Прибыль появляется точечно, а не системно',
       support: `Лучший: ${bestMonth}. Худший: ${worstMonth}.`,
       statusLabel: 'Основано на данных',
       detailTitle: 'Динамика и аномалии',
-      detailLead: 'Динамика показывает не просто сезонность. Она показывает, что у бизнеса нет повторяемого механизма прибыли: плюс появляется точечно, а минус возвращается как базовый сценарий.',
+      detailLead: 'Динамика показывает не просто сезонность. Она показывает, есть ли у бизнеса повторяемый механизм прибыли или плюс появляется точечно, а минус возвращается как базовый сценарий.',
       bullets: [
-        'Сильный месяц нельзя читать как доказательство, что "всё может работать". Это скорее проверка верхнего потенциала: спрос действительно может быть, и сеть способна показать прибыль. Но если после пика прибыль снова не повторяется, управленческий вопрос в том, какие условия сделали пик прибыльным и можно ли воспроизвести их регулярно.',
-        'Слабый месяц показывает другую сторону модели: когда выручка падает, расходная база не падает синхронно. Это тест на гибкость бизнеса. Если в слабый сезон ФОТ, УК, аренда и операционные затраты продолжают давить, у сети нет механизма автоматической адаптации.',
-        'Особенно опасны месяцы с нормальной выручкой и отрицательной прибылью. Они показывают, что проблема не сводится к маркетингу или сезонности: она может сидеть в структуре расходов, распределении затрат между клубами или тяжёлой базе отдельных точек.',
+        'Сильный месяц нельзя читать как доказательство, что "всё может работать". Это проверка верхнего потенциала. Управленческий вопрос: какие условия сделали пик прибыльным и можно ли воспроизвести их регулярно.',
+        'Слабый месяц показывает другую сторону модели: когда выручка падает, расходная база не падает синхронно. Это тест на гибкость бизнеса — насколько расходы адаптируются к падению выручки.',
+        'Особенно опасны месяцы с нормальной выручкой и отрицательной прибылью. Проблема не в сезонности, а в структуре расходов или тяжёлой базе отдельных статей.',
       ],
       note: 'Динамика отвечает на вопрос времени: какие месяцы являются нормой, какие пиком, а какие провалом. Причины провалов нужно проверять отдельно.',
-      actionText: 'Нельзя управлять сетью по среднему месяцу. Пиковые месяцы должны показывать, какая маржа возможна при нормальной загрузке. Обычные месяцы — это проверка устойчивости модели. Провальные месяцы показывают, насколько быстро расходы адаптируются к падению выручки. Для каждого типа месяца нужен отдельный сценарий: удержание маржи, контроль базы или заранее подготовленное снижение нагрузки.',
+      actionText: 'Нельзя управлять бизнесом только по среднему месяцу. Пиковые месяцы показывают, какая маржа возможна при нормальной загрузке. Провальные месяцы показывают, насколько быстро расходы адаптируются к падению выручки. Для каждого типа месяца нужен отдельный сценарий.',
     },
     {
       id: 'profit-drag',
@@ -1595,7 +1679,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
         gap !== null
           ? `Разрыв ${formatCurrency(gap, true)}/мес может казаться управляемым на фоне оборота, но как средняя ситуация он превращается примерно в ${formatCurrency(annualLeak, true)} годовой потери. Это не мелкий недобор, а деньги, которые забираются из развития, ремонта, маркетинга, команды и резерва.`
           : 'Разрыв до порога нужно читать не как одну цифру, а как устойчивость модели: насколько бизнес выдерживает слабый месяц, рост аренды или ошибку управления.',
-        `${formatCurrency(facts.breakevenRevenue, true)} — это нижняя граница выживания. Если бизнес целится только в неё, он остаётся на нуле без права на ошибку: любой слабый месяц, перерасход ФОТ или рост аренды снова отправляет сеть в минус.`,
+        `${formatCurrency(facts.breakevenRevenue, true)} — это нижняя граница выживания. Если бизнес целится только в неё, он остаётся на нуле без права на ошибку: любой слабый месяц или рост расходной базы снова отправляет бизнес в минус.`,
         `Целевой ориентир ${targetRevenue !== null ? formatCurrency(targetRevenue, true) : 'выше порога'} имеет смысл только при условии, что расходы не растут пропорционально выручке. Нужно считать не выручку до цели, а прибыль после всех дополнительных затрат.`,
       ],
       note: targetRevenue !== null ? `Для маржи ${targetMargin}% нужен ориентир около ${formatCurrency(targetRevenue, true)}.` : undefined,
@@ -1609,8 +1693,8 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
       kicker: 'Первый шаг',
       tone: 'indigo',
       icon: CheckCircle2,
-      value: 'Сначала карта клубов, потом решения по расходам и росту',
-      support: 'Сначала собрать разрез по клубам, затем принимать разные решения по разным типам точек',
+      value: facts.actions[0] ? cleanText(facts.actions[0]).slice(0, 90) : 'Разобрать структуру расходов и найти зоны роста прибыли',
+      support: 'Сначала диагностика по направлениям, затем разные решения для разных статей',
       statusLabel: 'Первый шаг',
       detailTitle: 'Сценарии и план действий',
       detailLead: 'Первый шаг — не "продать больше", а понять, где именно течёт маржа и какие точки создают убыток.',
@@ -2343,8 +2427,8 @@ function CardPreview({
       case 'anomalies':
         return (
           <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <MetricChip label="Худший месяц" value={pnlFacts.anomalies.find((item) => /худший месяц/i.test(item))?.replace(/^Худший месяц:\s*/i, '') ?? 'Июль 2025'} tone="red" />
-            <MetricChip label="Лучший месяц" value={pnlFacts.anomalies.find((item) => /лучший месяц/i.test(item))?.replace(/^Лучший месяц:\s*/i, '') ?? 'Ноябрь 2025'} tone="green" />
+            <MetricChip label="Худший месяц" value={pnlFacts.anomalies.find((item) => /худший месяц/i.test(item))?.replace(/^Худший месяц:\s*/i, '') ?? '—'} tone="red" />
+            <MetricChip label="Лучший месяц" value={pnlFacts.anomalies.find((item) => /лучший месяц/i.test(item))?.replace(/^Лучший месяц:\s*/i, '') ?? '—'} tone="green" />
           </div>
         )
       default:
@@ -3083,22 +3167,22 @@ function pnlActionContent(card: DetailCard): { title: string; main: string; text
     case 'profit-drag':
       return {
         title: 'Что делать с расходной базой',
-        main: 'Разбирать УК, ФОТ и аренду по каждому клубу, а не резать всё подряд',
-        text: card.actionText ?? 'Главный риск — начать экономить на мелких или видимых статьях и не тронуть настоящую причину. Если проблема сидит в аренде, УК или структуре ФОТ конкретных клубов, экономия на продуктах или сервисе может ухудшить клиентский опыт и не исправить маржу. Первое действие: собрать расходы по клубам и найти, где база не соответствует выручке.',
+        main: 'Разобрать крупные статьи расходов, а не резать всё подряд',
+        text: card.actionText ?? 'Главный риск — начать экономить на мелких статьях и не тронуть настоящую причину. Если проблема сидит в структуре крупных расходов, экономия на мелких позициях не исправит маржу. Первое действие: собрать расходы по направлениям и найти, где база не соответствует выручке.',
         tone: 'amber',
       }
     case 'trend-anomalies':
       return {
         title: 'Что делать по динамике',
         main: 'Разделить месяцы на пиковые, обычные и провальные',
-        text: card.actionText ?? 'Нельзя управлять сетью по среднему месяцу. Для пиковых месяцев нужны правила удержания маржи, для обычных — контроль базы расходов, для провальных — заранее подготовленный сценарий снижения операционной нагрузки.',
+        text: card.actionText ?? 'Нельзя управлять бизнесом только по среднему месяцу. Для пиковых месяцев нужны правила удержания маржи, для обычных — контроль базы расходов, для провальных — заранее подготовленный сценарий снижения операционной нагрузки.',
         tone: 'blue',
       }
     case 'breakeven':
       return {
         title: 'Что делать с порогом',
         main: 'Не ставить целью просто “выйти в ноль”',
-        text: card.actionText ?? '9,5 млн ₽ — это нижняя граница выживания, а не здоровая цель. Нужен запас прочности: либо снижать базу расходов, либо целиться выше порога, иначе каждый слабый месяц снова будет возвращать сеть в минус.',
+        text: card.actionText ?? 'Порог безубыточности — это нижняя граница выживания, а не здоровая цель. Нужен запас прочности: либо снижать базу расходов, либо целиться выше порога, иначе каждый слабый месяц снова будет возвращать бизнес в минус.',
         tone: 'red',
       }
     default:
@@ -3607,8 +3691,8 @@ function DetailVisual({
     if (card.id === 'anomalies') {
       return (
         <div className="grid gap-3 sm:grid-cols-2">
-          <MetricChip label="Худший месяц" value={pnlFacts.anomalies.find(a => /худший/i.test(a))?.replace(/^Худший месяц:\s*/i, '') ?? 'Июль 2025 — −2,8 млн ₽'} tone="red" />
-          <MetricChip label="Лучший месяц" value={pnlFacts.anomalies.find(a => /лучший/i.test(a))?.replace(/^Лучший месяц:\s*/i, '') ?? 'Ноябрь 2025 — +2,0 млн ₽'} tone="green" />
+          <MetricChip label="Худший месяц" value={pnlFacts.anomalies.find(a => /худший/i.test(a))?.replace(/^Худший месяц:\s*/i, '') ?? '—'} tone="red" />
+          <MetricChip label="Лучший месяц" value={pnlFacts.anomalies.find(a => /лучший/i.test(a))?.replace(/^Лучший месяц:\s*/i, '') ?? '—'} tone="green" />
         </div>
       )
     }
@@ -4008,7 +4092,7 @@ function SourceTableBlockV2({
         {score && showScoreInfo && (
           <div className="mt-3 rounded-2xl border px-3 py-2.5 text-[11px] leading-relaxed" style={{ background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}>
             <span className="font-semibold">Оценка качества — это не оценка бизнеса.</span> Алгоритм проверяет, пригодна ли таблица для разбора: найдены ли выручка, расходы, прибыль, периоды, ненулевые значения и достаточный объём данных.{' '}
-            <span className="font-semibold">{score}/100</span> — данных достаточно для управленческого анализа. Без P&L по клубам, трафика и расшифровки УК часть выводов остаётся предварительной.
+            <span className="font-semibold">{score}/100</span> — данных достаточно для управленческого анализа. Без разбивки по направлениям, трафика и расшифровки ключевых расходов часть выводов остаётся предварительной.
           </div>
         )}
       </div>
