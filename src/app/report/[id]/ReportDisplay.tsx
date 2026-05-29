@@ -659,7 +659,9 @@ function dedupeBullets(lines: string[], lead?: string, note?: string, max = 4): 
 }
 
 function parseNumber(value: string): number | null {
+  if (!value?.trim()) return null
   const normalized = value.replace(/[^\d,.\-−]/g, '').replace('−', '-').replace(',', '.')
+  if (!normalized) return null
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : null
 }
@@ -726,31 +728,97 @@ function extractConstraintTitle(content: string): string {
   return firstSentence(content, 'Главное ограничение определено.')
 }
 
-function parseSeries(row: string[] | null, startIndex: number): number[] {
-  if (!row) return []
-  return row
-    .slice(startIndex)
-    .map((cell) => parseNumber(cell))
-    .filter((value): value is number => value !== null)
-}
 
 function extractTargetMargin(report: string): number | null {
   const match = report.match(/целевая\s+(?:маржа|рентабельность)[^0-9-]*(-?\d+(?:[.,]\d+)?)\s*%/i)
   return match ? parseFloat(match[1].replace(',', '.')) : null
 }
 
+// ─── Helpers for complex P&L structures (WB/OZON subcolumns, multi-row headers) ──
+
+const MONTH_CELL_RE = /январ|феврал|март|апрел|\bмай\b|июн|июл|август|сентябр|октябр|ноябр|декабр|q[1-4]|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec/i
+const PERIOD_CELL_RE = /20\d{2}|\d{1,2}\.\d{4}|\d{2}\.\d{2}/
+const TOTAL_CELL_RE = /^итого$|^всего$|^total$|^итог$|^∑$|^итого:$/i
+
+/** Returns indices of "Итого/Total" subcolumns (WB/OZON pattern). Empty if not detected. */
+function findTotalColumns(rows: string[][]): number[] {
+  for (const row of rows.slice(0, 8)) {
+    const cols = row.map((cell, i) => (i >= 1 && TOTAL_CELL_RE.test(cell.trim())) ? i : -1).filter(i => i >= 0)
+    if (cols.length >= 2) return cols
+  }
+  return []
+}
+
+/** Returns the best header row with month labels and the column indices where months appear. */
+function findMonthHeaderRow(rows: string[][]): { labels: string[]; indices: number[] } {
+  let bestCount = 0
+  let bestLabels: string[] = []
+  let bestIndices: number[] = []
+
+  for (const row of rows.slice(0, 8)) {
+    const indices: number[] = []
+    const labels: string[] = []
+    row.forEach((cell, i) => {
+      if (i >= 1 && (MONTH_CELL_RE.test(cell) || PERIOD_CELL_RE.test(cell))) {
+        indices.push(i)
+        labels.push(cell.trim())
+      }
+    })
+    if (indices.length > bestCount) {
+      bestCount = indices.length
+      bestIndices = indices
+      bestLabels = labels
+    }
+  }
+
+  if (bestCount >= 2) return { labels: bestLabels, indices: bestIndices }
+  // fallback: row 0 cells from index 2 that are non-empty
+  const fallback = (rows[0] ?? []).slice(2).map((c, i) => ({ cell: c.trim(), idx: i + 2 })).filter(x => x.cell)
+  return { labels: fallback.map(x => x.cell), indices: fallback.map(x => x.idx) }
+}
+
+/** Extract numeric series using explicit column indices, or from col 2+ if indices empty. */
+function parseSeriesByIndices(row: string[] | null, indices: number[]): number[] {
+  if (!row) return []
+  const cols = indices.length >= 2 ? indices : row.map((_, i) => i).slice(2)
+  return cols.map(i => parseNumber(row[i] ?? '')).filter((v): v is number => v !== null)
+}
+
+/** Two-pass findRow: try specific synonyms first, fall back to general ones. */
+function findRowRobust(source: ParsedSource | null, specific: string[], general: string[]): string[] | null {
+  return findRow(source, specific) ?? findRow(source, general)
+}
+
 function buildPnlFacts(report: string, source: ParsedSource | null, sections: ReportSection[]): PnlFacts {
-  const revenueRow = findRow(source, ['общая выручка', 'выручка'])
-  const profitRow = findRow(source, ['прибыль'])
-  const costRow = findRow(source, ['операционные расходы'])
-  const marginRow = findRow(source, ['прибыль %', 'маржа'])
+  const rows = source?.rows ?? []
+  const totalCols = findTotalColumns(rows)
+  const monthInfo = findMonthHeaderRow(rows)
+  const seriesIndices = totalCols.length >= 2 ? totalCols : monthInfo.indices
+
+  // Expanded row detection with two-pass: specific first, then general
+  const revenueRow = findRowRobust(source,
+    ['итого выручка', 'выручка итого', 'выручка / оборот', 'выручка/оборот', 'оборот / выручка', 'итого оборот', 'общая выручка', 'товарооборот'],
+    ['выручка', 'оборот', 'продажи', 'доход', 'реализация', 'revenue', 'sales'],
+  )
+  const profitRow = findRowRobust(source,
+    ['чистая прибыль', 'прибыль/убыток', 'прибыль / убыток', 'итого прибыль', 'прибыль итого', 'прибыль до налогов'],
+    ['прибыль', 'ebitda', 'операционная прибыль', 'net profit'],
+  )
+  const costRow = findRowRobust(source,
+    ['операционные расходы', 'итого расходы', 'итого затраты', 'всего расходов', 'общие расходы', 'расходы итого'],
+    ['расходы', 'затраты', 'себестоимость', 'cost', 'expense'],
+  )
+  const marginRow = findRowRobust(source,
+    ['рентабельность по чп', 'чистая рентабельность', 'рентабельность чп', 'рентаб. чп'],
+    ['рентабельность', 'маржа', 'прибыль %', 'margin'],
+  )
   const rentRow = findRow(source, ['аренда'])
-  const salaryRow = findRow(source, ['зарплата'])
-  const managementRow = findRow(source, ['расходы на ук'])
-  const productsRow = findRow(source, ['расходы на продукты'])
-  const utilitiesRow = findRow(source, ['коммунальные'])
+  const salaryRow = findRow(source, ['зарплата', 'фот', 'оплата труда', 'payroll'])
+  const managementRow = findRow(source, ['расходы на ук', 'управляющая компания', 'ук '])
+  const productsRow = findRow(source, ['расходы на продукты', 'себестоимость товаров', 'cogs'])
+  const utilitiesRow = findRow(source, ['коммунальные', 'utilities'])
   const rentPctRow = findRow(source, ['аренда %'])
-  const salaryPctRow = findRow(source, ['зарплата %'])
+  const salaryPctRow = findRow(source, ['зарплата %', 'фот %'])
   const overview = findSection(sections, ['overview', 'metrics'], ['резюме', 'краткое'])
   const constraint = findSection(sections, ['constraint'], ['ограничение', 'bottleneck'])
   const limitations = findSection(sections, ['limitations'], ['не хватает', 'ограничения'])
@@ -758,14 +826,29 @@ function buildPnlFacts(report: string, source: ParsedSource | null, sections: Re
   const scenarios = findSection(sections, ['scenarios'], ['сценарии'])
   const anomalies = findSection(sections, ['anomalies'], ['аномалии'])
 
-  const monthLabels = source?.rows[0]?.slice(2) ?? []
-  const revenueSeries = parseSeries(revenueRow, 2)
-  const profitSeries = parseSeries(profitRow, 2)
-  const avgRevenue = parseNumber(revenueRow?.[1] ?? '')
-  const lastRevenue = parseNumber(revenueRow?.at(-1) ?? '')
-  const avgProfit = parseNumber(profitRow?.[1] ?? '')
-  const lastProfit = parseNumber(profitRow?.at(-1) ?? '')
-  const avgCosts = parseNumber(costRow?.[1] ?? '')
+  // Month labels: use detected header row; fall back to row[0] slice(2)
+  const monthLabels = monthInfo.labels.length >= 2
+    ? monthInfo.labels
+    : (source?.rows[0]?.slice(2).filter(c => c.trim()) ?? [])
+
+  // Series: use total columns when WB/OZON detected, else from col 2+
+  const revenueSeries = parseSeriesByIndices(revenueRow, seriesIndices)
+  const profitSeries = parseSeriesByIndices(profitRow, seriesIndices)
+
+  // Average: if we have explicit series columns, compute mean; else use col[1] (demo format avg column)
+  function avgOfSeries(row: string[] | null, series: number[]): number | null {
+    if (seriesIndices.length >= 2 && series.length > 0) {
+      const nonZero = series.filter(v => v !== 0)
+      return nonZero.length > 0 ? Math.round(nonZero.reduce((a, b) => a + b) / nonZero.length) : null
+    }
+    return parseNumber(row?.[1] ?? '')
+  }
+
+  const avgRevenue = avgOfSeries(revenueRow, revenueSeries)
+  const lastRevenue = revenueSeries.length > 0 ? (revenueSeries.at(-1) ?? null) : parseNumber(revenueRow?.at(-1) ?? '')
+  const avgProfit = avgOfSeries(profitRow, profitSeries)
+  const lastProfit = profitSeries.length > 0 ? (profitSeries.at(-1) ?? null) : parseNumber(profitRow?.at(-1) ?? '')
+  const avgCosts = avgOfSeries(costRow, parseSeriesByIndices(costRow, seriesIndices))
   const avgMargin = parsePercent(marginRow?.[1] ?? '')
   const lastMargin = parsePercent(marginRow?.at(-1) ?? '')
   const targetMargin = extractTargetMargin(report)
@@ -1377,7 +1460,10 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
 function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
   const gap = facts.gapToBreakeven
   const negativeMonths = facts.totalMonths > 0 ? facts.totalMonths - facts.profitableMonths : null
-  const top3Percent = facts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.pct ?? 0), 0)
+  const hasExpenseData = facts.expenseBreakdown.length > 0
+  const top3Percent = hasExpenseData
+    ? facts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.pct ?? 0), 0)
+    : 0
   const fixedBase = (facts.expenseBreakdown.find((item) => /ук/i.test(item.label))?.amount ?? 0)
     + (facts.expenseBreakdown.find((item) => /фот/i.test(item.label))?.amount ?? 0)
     + (facts.expenseBreakdown.find((item) => /аренд/i.test(item.label))?.amount ?? 0)
@@ -1391,27 +1477,55 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
   const bestMonth = facts.bestMonthLabel && facts.bestMonthProfit !== null ? `${facts.bestMonthLabel} / ${formatCurrency(facts.bestMonthProfit, true)}` : 'лучший месяц найден в данных'
   const worstMonth = facts.worstMonthLabel && facts.worstMonthProfit !== null ? `${facts.worstMonthLabel} / ${formatCurrency(facts.worstMonthProfit, true)}` : 'худший месяц найден в данных'
 
+  // Diagnosis value — data-driven, not hardcoded
+  const diagnosisTone: Tone =
+    facts.totalMonths > 0 && facts.profitableMonths === facts.totalMonths ? 'green'
+    : facts.totalMonths > 0 && facts.profitableMonths > facts.totalMonths / 2 ? 'amber'
+    : 'red'
+  const diagnosisValue =
+    facts.totalMonths > 0 && facts.profitableMonths === facts.totalMonths
+      ? 'Бизнес прибыльный'
+      : facts.totalMonths > 0 && facts.profitableMonths > facts.totalMonths / 2
+        ? `Прибыль нестабильна: ${negativeMonths} убыточных из ${facts.totalMonths}`
+        : facts.totalMonths > 0
+          ? 'Расходы выше выручки'
+          : facts.mainDiagnosis.length < 60 ? facts.mainDiagnosis : 'Нужен разбор расходной базы'
+
+  const diagnosisSupport =
+    negativeMonths !== null
+      ? `${negativeMonths} убыточных из ${facts.totalMonths} месяцев`
+      : facts.avgProfit !== null && facts.avgProfit > 0
+        ? `Средняя прибыль ${formatCurrency(facts.avgProfit, true)}/мес`
+        : 'Прибыль появляется точечно'
+
+  const diagnosisDetailLead =
+    facts.totalMonths > 0 && facts.profitableMonths === facts.totalMonths
+      ? 'Бизнес прибыльный в течение всего анализируемого периода. Задача — удержать и масштабировать прибыльную модель.'
+      : facts.totalMonths > 0 && facts.profitableMonths > facts.totalMonths / 2
+        ? `Прибыль нестабильна: ${facts.profitableMonths} из ${facts.totalMonths} месяцев прибыльные. Есть рабочая модель, но система пока не умеет стабильно воспроизводить результат.`
+        : 'Бизнес пока не доказал, что умеет зарабатывать стабильно. Прибыль появляется только в отдельных пиковых месяцах, а обычный режим работы остаётся убыточным.'
+
   const cards: DetailCard[] = [
     {
       id: 'diagnosis',
       title: 'Главный диагноз',
       kicker: 'Что сломано',
-      tone: 'red',
+      tone: diagnosisTone,
       icon: AlertTriangle,
-      value: 'Расходы выше выручки',
-      support: negativeMonths !== null ? `Убыток в ${negativeMonths} из ${facts.totalMonths} месяцев` : 'Прибыль появляется только точечно',
-      statusLabel: 'Критично',
+      value: diagnosisValue,
+      support: diagnosisSupport,
+      statusLabel: diagnosisTone === 'green' ? 'Прибыльно' : diagnosisTone === 'amber' ? 'Нестабильно' : 'Критично',
       detailTitle: 'Главный диагноз',
-      detailLead: 'Бизнес пока не доказал, что умеет зарабатывать стабильно. Прибыль появляется только в отдельных пиковых месяцах, а обычный режим работы остаётся убыточным.',
+      detailLead: diagnosisDetailLead,
       bullets: [
-        negativeMonths !== null
-          ? `${facts.profitableMonths} прибыльных месяца из ${facts.totalMonths} — это не обычная сезонность и не набор случайных провалов. Это модель, которая зарабатывает только при удачном совпадении спроса, загрузки и расходной базы. Плюсовые месяцы доказывают наличие спроса, но не доказывают, что сеть умеет регулярно превращать этот спрос в прибыль.`
-          : 'Прибыль появляется не как повторяемая операционная норма, а как отдельные всплески. Это значит, что бизнес нельзя считать здоровым только по одному удачному месяцу.',
-        'Главная управленческая ошибка здесь — принять редкие плюсовые месяцы за доказательство здоровой модели. Для диагноза важна не способность один раз выйти в плюс, а способность повторять прибыль без ручного совпадения сезона, спроса и дисциплины расходов. Сейчас по сводному периоду видно обратное: плюс не стал нормой.',
-        'Такой бизнес нельзя оценивать только по обороту. Оборот показывает масштаб активности, но не качество модели. Если выручка не превращается в прибыль регулярно, компания фактически покупает занятость, нагрузку и операционную сложность, но не получает устойчивый экономический результат.',
+        negativeMonths !== null && facts.totalMonths > 0
+          ? `${facts.profitableMonths} прибыльных из ${facts.totalMonths} месяцев. Плюсовые месяцы доказывают наличие спроса, но не доказывают, что бизнес умеет регулярно превращать этот спрос в прибыль.`
+          : 'Прибыль появляется не как повторяемая операционная норма, а как отдельные всплески.',
+        'Для диагноза важна не способность один раз выйти в плюс, а способность повторять прибыль без ручного совпадения сезона, спроса и дисциплины расходов.',
+        'Бизнес нельзя оценивать только по обороту. Если выручка не превращается в прибыль регулярно, компания фактически покупает занятость и операционную сложность, но не получает устойчивый экономический результат.',
       ],
-      note: 'Этот блок фиксирует общий диагноз модели: бизнес не доказал повторяемую способность зарабатывать. Расшифровка причин лежит ниже — в расходной базе, динамике, пороге и ограничениях данных.',
-      actionText: 'Первое решение — не “продать больше” и не “резать всё”, а построить карту сети. Нужно понять, вся сеть убыточна или 1–2 клуба тянут общий результат вниз. Для доноров задача — удержать маржу и масштабировать практики. Для нейтральных — довести до нормы. Для пожирателей маржи — отдельный разбор аренды, ФОТ, УК и загрузки.',
+      note: 'Этот блок фиксирует общий диагноз модели. Расшифровка причин лежит ниже — в расходной базе, динамике, пороге и ограничениях данных.',
+      actionText: 'Первое решение — понять, весь бизнес убыточен или отдельные направления / периоды тянут общий результат вниз. Это меняет набор управленческих инструментов.',
       featured: true,
     },
     {
@@ -1439,19 +1553,31 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
       kicker: 'Ключевая проблема',
       tone: 'red',
       icon: TrendingDown,
-      value: `УК + ФОТ + аренда = ${top3Percent}% выручки`,
-      support: 'Тяжёлая база расходов не снижается вместе с выручкой',
+      value: hasExpenseData && top3Percent > 0
+        ? `Крупные статьи = ${top3Percent}% выручки`
+        : facts.avgCosts !== null
+          ? `Расходы = ${formatCurrency(facts.avgCosts, true)}/мес`
+          : 'Основные расходы давят на прибыль',
+      support: hasExpenseData && top3Percent > 0
+        ? 'Тяжёлая база расходов не снижается вместе с выручкой'
+        : facts.avgRevenue !== null && facts.avgCosts !== null && facts.avgCosts > facts.avgRevenue
+          ? 'Расходы превышают выручку'
+          : 'Структура расходов влияет на прибыльность',
       statusLabel: 'Ключевая проблема',
       detailTitle: 'Что съедает прибыль',
-      detailLead: 'Главная проблема не в том, что расходы "большие". Главная проблема в том, что база расходов ведёт себя как жёсткая конструкция, а выручка — как сезонная переменная.',
+      detailLead: 'Главная проблема не в том, что расходы "большие". Главная проблема в том, что база расходов ведёт себя как жёсткая конструкция, а выручка — как переменная.',
       bullets: [
-        `УК, ФОТ и аренда вместе занимают около ${top3Percent}% средней выручки. Это значит, что ещё до нормальной операционной гибкости бизнес почти полностью загружен крупными статьями. В сильные месяцы сеть может пройти этот порог, но в обычные или слабые месяцы база не успевает снижаться вслед за выручкой.`,
-        'Эти расходы нельзя лечить одинаково. Аренда — это договорной и переговорный контур. ФОТ — вопрос загрузки, смен, графиков и операционной дисциплины. УК — отдельный "чёрный ящик", который нужно расшифровывать по статьям. Если смешать всё в одну категорию "расходы", решение будет грубым и может навредить.',
-        'Самая частая ошибка — резать видимые мелкие статьи: продукты, персонал, коммунальные, сервисные расходы. Это может ухудшить клиентский опыт и не сдвинуть главную экономику. Если проблема сидит в аренде, УК или структуре ФОТ, экономия на продуктах не спасёт модель.',
-        'Настоящий вопрос не "какая статья самая большая", а "какая статья не соответствует выручке конкретного клуба". Один клуб может быть здоровым, второй — на грани, а третий — пожирать маржу всей сети. Сводный отчёт этого не показывает.',
+        hasExpenseData && top3Percent > 0
+          ? `Крупные статьи занимают около ${top3Percent}% средней выручки. В слабые месяцы эта нагрузка не снижается вслед за выручкой.`
+          : facts.avgCosts !== null
+            ? `Средние расходы — ${formatCurrency(facts.avgCosts, true)}/мес. В слабые месяцы расходная база не снижается вслед за выручкой.`
+            : 'Структура расходов требует детализации по статьям.',
+        'Разные статьи расходов нельзя лечить одинаково. Фиксированные (аренда, ФОТ, обязательные контракты) требуют переговорного или структурного решения. Переменные (закупки, маркетинг, сервис) — управления нормой на единицу выручки.',
+        'Самая частая ошибка — резать видимые мелкие статьи. Это может ухудшить сервис и не сдвинуть главную экономику. Нужно смотреть, какая статья не соответствует выручке конкретного направления или периода.',
+        'Настоящий вопрос не "какая статья самая большая", а "какая статья не соответствует выручке". Сводный P&L этого не показывает — нужна детализация по направлениям.',
       ],
-      note: `База крупных статей: ${formatCurrency(fixedBase, true)}/мес. Это блок про управляемость расходной конструкции, а не про расчёт порога.`,
-      actionText: 'Начинать нужно не с экономии на всём подряд, а с проверки трёх тяжёлых статей: УК, ФОТ и аренды. Если проблема сидит в условиях аренды или структуре ФОТ отдельных клубов, сокращение продуктов, сервиса или маркетинга ухудшит клиентский опыт и не исправит маржу. Управленческий фокус — найти клубы, где база расходов не соответствует выручке, и принимать разные решения по разным типам точек.',
+      note: fixedBase > 0 ? `Фиксированная база: ${formatCurrency(fixedBase, true)}/мес. Блок про управляемость расходной конструкции.` : undefined,
+      actionText: 'Начинать нужно не с экономии на всём подряд, а с разбора тяжёлых фиксированных статей. Если проблема сидит в структуре или условиях крупных контрактов, сокращение мелких позиций не исправит маржу.',
       featured: true,
     },
     {
@@ -1473,7 +1599,9 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
         `Целевой ориентир ${targetRevenue !== null ? formatCurrency(targetRevenue, true) : 'выше порога'} имеет смысл только при условии, что расходы не растут пропорционально выручке. Нужно считать не выручку до цели, а прибыль после всех дополнительных затрат.`,
       ],
       note: targetRevenue !== null ? `Для маржи ${targetMargin}% нужен ориентир около ${formatCurrency(targetRevenue, true)}.` : undefined,
-      actionText: '9,5 млн ₽ — это не цель, а нижняя граница выживания. Если бизнес ориентируется только на выход в ноль, он остаётся без запаса прочности: любой слабый месяц, рост ФОТ или арендный скачок снова возвращает сеть в минус. Управленческая цель — не просто дотянуться до порога, а создать запас: снизить фиксированную базу и проверить, какая выручка реально даёт нормальную маржу.',
+      actionText: gap !== null && gap > 0
+        ? `Порог — нижняя граница выживания, не цель. Без запаса прочности любой слабый месяц или рост расходной базы снова отправляет бизнес в минус. Управленческая цель — снизить фиксированную базу и проверить, какая выручка реально даёт нормальную маржу.`
+        : 'Бизнес работает около порога безубыточности. Нужно убедиться, что есть запас на случай слабого месяца или роста расходов.',
     },
     {
       id: 'actions',
@@ -1703,10 +1831,10 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
   const isPnl = agentType === 'pnl'
   const items: IntroFact[] = isPnl
     ? [
-        { label: 'Нет P&L по клубам', value: 'Нельзя отделить прибыльные точки от клубов, которые съедают общий результат.', tone: 'amber' },
-        { label: 'Нет трафика', value: 'Нельзя понять, проблема в спросе, цене, конверсии или загрузке.', tone: 'blue' },
-        { label: 'Нет расшифровки УК', value: 'Нельзя понять, что можно оптимизировать, а что является обязательной нагрузкой.', tone: 'slate' },
-        { label: 'Нет ФОТ по сменам', value: 'Нельзя отличить перерасход персонала от нормальной операционной нагрузки.', tone: 'indigo' },
+        { label: 'Нет разбивки по направлениям', value: 'Нельзя отделить прибыльные направления от тех, что съедают общий результат.', tone: 'amber' },
+        { label: 'Нет трафика и конверсий', value: 'Нельзя понять, проблема в спросе, цене, конверсии или операционной загрузке.', tone: 'blue' },
+        { label: 'Нет расшифровки расходов', value: 'Нельзя точно понять, что можно оптимизировать, а что — обязательная нагрузка.', tone: 'slate' },
+        { label: 'Нет данных по команде', value: 'Нельзя отличить перерасход персонала от нормальной операционной нагрузки.', tone: 'indigo' },
       ]
     : []
 
@@ -1756,7 +1884,7 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
             Что важно знать перед чтением
           </h2>
           <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
-            Отчёт построен по сводному P&L. Он показывает, что сеть убыточна и где основные зоны давления, но не отвечает на главный управленческий вопрос: вся сеть работает плохо или несколько клубов тянут результат вниз.
+            Отчёт построен по сводным P&L-данным. Он показывает динамику выручки, структуру расходов и зоны потерь прибыли, но не отвечает на все управленческие вопросы без дополнительных разрезов.
           </p>
         </div>
       </div>
@@ -2394,15 +2522,15 @@ function BulletPreview({ items }: { items: string[] }) {
 
 function ScenarioPlanPanel() {
   const plan = [
-    { window: '7 дней', action: 'Собрать P&L по клубам: выручка, аренда, ФОТ, УК, прибыль.' },
-    { window: '14 дней', action: 'Разделить клубы на доноров, нейтральные точки и пожирателей маржи.' },
-    { window: '30 дней', action: 'Принять разные решения по группам: масштабировать, доводить до нормы, пересобирать.' },
+    { window: '7 дней', action: 'Собрать P&L по направлениям или источникам выручки: выручка, прямые расходы, маржа.' },
+    { window: '14 дней', action: 'Разделить направления на прибыльные, нейтральные и убыточные.' },
+    { window: '30 дней', action: 'Принять разные решения по группам: масштабировать, выравнивать, переосмыслять.' },
   ]
   const dangerous = [
     'Не резать расходы вслепую',
-    'Не масштабировать продажи без маржи',
-    'Не оценивать сеть только по среднему месяцу',
-    'Не принимать решения без P&L по клубам',
+    'Не масштабировать продажи без понимания маржи',
+    'Не оценивать бизнес только по среднему месяцу',
+    'Не принимать решения без разбивки по направлениям',
   ]
 
   return (
@@ -2423,7 +2551,7 @@ function ScenarioPlanPanel() {
       <div className="rounded-3xl border p-3.5" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
         <h3 className="text-sm font-semibold" style={{ color: '#92400E' }}>Какие решения сейчас опасны</h3>
         <p className="mt-2 text-[0.88rem] leading-[1.5]" style={{ color: '#78350F' }}>
-          Сводный P&L показывает убыток, но не показывает, где именно он возникает. Без клубного разреза легко ударить по сильным точкам и не исправить слабые.
+          Сводный P&L показывает убыток, но не показывает, где именно он возникает. Без разбивки по направлениям легко ударить по прибыльным и не исправить убыточные.
         </p>
         <div className="mt-2.5 grid gap-1.5">
           {dangerous.map((item) => (
@@ -2439,16 +2567,16 @@ function ScenarioPlanPanel() {
 }
 
 function LimitationsPanel({ sourceWarning }: { sourceWarning?: string }) {
-  const exact = ['Сводный P&L достаточно хорошо показывает сам факт убытка, динамику выручки, среднюю расходную базу и месяцы, где прибыль появляется или исчезает. Этого достаточно для диагноза “проблема есть”.']
+  const exact = ['Сводный P&L достаточно хорошо показывает факт убытка или прибыли, динамику выручки, среднюю расходную базу и месяцы, где прибыль появляется или исчезает. Этого достаточно для диагноза “проблема есть”.']
   const missing = [
-    'Без P&L по клубам нельзя понять, вся сеть убыточна или несколько точек маскируются внутри сводного результата. Это меняет решение: менять модель всей сети или чинить конкретные клубы.',
-    'Без трафика и посещаемости нельзя отличить проблему спроса от проблемы цены, конверсии, загрузки или графика персонала. Один и тот же убыток может иметь разные причины.',
-    'Без расшифровки УК и ФОТ по сменам нельзя безопасно резать расходы: можно ухудшить сервис и не попасть в статью, которая реально держит бизнес ниже порога.',
+    'Без разбивки по направлениям нельзя понять, весь бизнес убыточен или отдельные направления маскируются внутри сводного результата. Это меняет набор решений.',
+    'Без данных о трафике и конверсиях нельзя отличить проблему спроса от проблемы цены, загрузки или персонала. Один и тот же убыток может иметь разные причины.',
+    'Без расшифровки крупных статей расходов нельзя безопасно резать затраты: можно ухудшить сервис и не попасть в статью, которая реально держит бизнес ниже порога.',
   ]
   const next = [
     sourceWarning,
-    'P&L по каждому клубу с выручкой, арендой, ФОТ, УК и прибылью.',
-    'Трафик, посещаемость, загрузка смен и расшифровка УК по статьям.',
+    'P&L по каждому направлению или источнику выручки с детализацией расходов.',
+    'Данные по трафику, конверсии, загрузке и ключевым статьям операционных расходов.',
   ].filter(Boolean) as string[]
 
   return (
