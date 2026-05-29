@@ -173,6 +173,25 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // PNL_DEBUG=1 → log CSV structure before AI call (safe: no keys, no full P&L text)
+  if (process.env.PNL_DEBUG === '1' && agentType === 'pnl' && body.pnlText) {
+    const lines = body.pnlText.split('\n')
+    const tableStart = lines.findIndex((l) => l.includes('=== Очищенная таблица'))
+    const csvLines = tableStart >= 0
+      ? lines.slice(tableStart + 1, tableStart + 12)
+      : lines.slice(0, 12)
+    console.info('[PnL pipeline debug]', {
+      requestId,
+      sourceFileName: body.sourceFileName,
+      selectedSheet: body.selectedSheet,
+      parsedRows: body.parsedRows,
+      parsedColumns: body.parsedColumns,
+      qualityScore: body.qualityScore,
+      // First 12 CSV rows — enough to see header structure without exposing full data
+      csvPreviewLines: csvLines,
+    })
+  }
+
   let report: string
   let modelUsed: string
   const aiStart = Date.now()

@@ -16,9 +16,18 @@ const CHANNEL_RE = /^wb$|^ozon$|^wildberries$|^wb\.ru$|^ozon\.ru$|^озон$|^м
 
 function parseNumber(value) {
   if (!value?.trim()) return null
-  const normalized = value.replace(/[^\d,.\-−]/g, '').replace('−', '-').replace(',', '.')
-  if (!normalized) return null
-  const parsed = Number(normalized)
+  let s = value.replace(/[^\d,.\-−]/g, '').replace('−', '-')
+  if (!s) return null
+  const commaCount = (s.match(/,/g) ?? []).length
+  const dotCount   = (s.match(/\./g) ?? []).length
+  if (commaCount > 1) {
+    s = s.replace(/,/g, '')
+  } else if (dotCount > 1) {
+    s = s.replace(/\./g, '').replace(',', '.')
+  } else {
+    s = s.replace(',', '.')
+  }
+  const parsed = Number(s)
   return Number.isFinite(parsed) ? parsed : null
 }
 
@@ -48,10 +57,17 @@ function detectMonthGroups(rows) {
     let totalIdx = -1
     const channelIndices = []
     for (let i = startIdx; i < endIdx; i++) {
-      const cell = (channelRow[i] ?? '').trim()
-      if (TOTAL_CELL_RE.test(cell) || TOTAL_CELL_LOOSE_RE.test(cell)) {
+      const channelCell = (channelRow[i] ?? '').trim()
+      // Fall back to same header row for inline WB/OZON: e.g. [январь, WB, OZON, февраль, ...]
+      const sameRowCell = i > startIdx ? (monthRow[i] ?? '').trim() : ''
+      // Check channelRow cell first; fall through to same-row cell only when no TOTAL/CHANNEL match
+      if (TOTAL_CELL_RE.test(channelCell) || TOTAL_CELL_LOOSE_RE.test(channelCell)) {
         if (totalIdx < 0) totalIdx = i
-      } else if (CHANNEL_RE.test(cell)) {
+      } else if (CHANNEL_RE.test(channelCell)) {
+        channelIndices.push(i)
+      } else if (TOTAL_CELL_RE.test(sameRowCell) || TOTAL_CELL_LOOSE_RE.test(sameRowCell)) {
+        if (totalIdx < 0) totalIdx = i
+      } else if (CHANNEL_RE.test(sameRowCell)) {
         channelIndices.push(i)
       }
     }
@@ -80,8 +96,13 @@ function parseSeriesFromGroups(row, groups) {
 
 function findRow(rows, names) {
   return rows.find(row => {
-    const label = (row[0] ?? '').toLowerCase()
-    return names.some(name => label.includes(name.toLowerCase()))
+    const label0 = (row[0] ?? '').toLowerCase()
+    // Also check col[1] — handles files where col[0] is a group category and col[1] is the metric label
+    const label1 = (row[1] ?? '').toLowerCase()
+    return names.some(name => {
+      const lc = name.toLowerCase()
+      return label0.includes(lc) || label1.includes(lc)
+    })
   }) ?? null
 }
 
@@ -188,6 +209,53 @@ const revenueSeriesC = parseSeriesFromGroups(revenueRowC, groupsC)
 assert(revenueSeriesC.length === 4, 'C: 4 revenue values', revenueSeriesC.length, 4)
 assert(revenueSeriesC[0] === 1200000, 'C: Jan revenue correct', revenueSeriesC[0], 1200000)
 
+// ─── Structure D: месяц + WB/OZON в одной строке (inline channels) ──────────
+
+console.log('\n=== Structure D: месяц и каналы в одной строке (реальный Excel-паттерн) ===')
+// In the real file: col0=label, col1=янв (group header — empty in data rows), col2=WB-янв, col3=OZON-янв, ...
+// detectMonthGroups finds months at [1,4,7,10]; channelRow (first data row) has numbers → no CHANNEL match
+// Fix: also check monthRow[i] for i > startIdx → finds WB at [2,5,8,11], OZON at [3,6,9,12]
+const structD2 = [
+  ['', '2026', '', '', '', '', '', '', '', '', '', '', ''],
+  ['Категория', 'январь', 'WB', 'OZON', 'февраль', 'WB', 'OZON', 'март', 'WB', 'OZON', 'апрель', 'WB', 'OZON'],
+  // data rows: col1 is the group-label position (empty in data), cols 2+3 are WB+OZON for January
+  ['Выручка (Органика + Выкуп)', '', '800000', '400000', '', '900000', '500000', '', '950000', '550000', '', '1100000', '600000'],
+  ['Чистая прибыль',              '', '200000', '100000', '', '250000', '150000', '', '280000', '170000', '', '320000',  '180000'],
+]
+
+const groupsD = detectMonthGroups(structD2)
+assert(groupsD.length === 4, 'D: 4 month groups detected', groupsD.length, 4)
+assert(groupsD[0].totalIndex === -1, 'D: Jan totalIndex=-1 (no Итого)', groupsD[0].totalIndex, -1)
+assert(groupsD[0].subIndices.length === 2, 'D: Jan has 2 subIndices (WB+OZON)', groupsD[0].subIndices.length, 2)
+assert(groupsD[0].subIndices[0] === 2, 'D: Jan WB at col 2', groupsD[0].subIndices[0], 2)
+assert(groupsD[0].subIndices[1] === 3, 'D: Jan OZON at col 3', groupsD[0].subIndices[1], 3)
+assert(groupsD[1].subIndices[0] === 5, 'D: Feb WB at col 5', groupsD[1].subIndices[0], 5)
+assert(groupsD[1].subIndices[1] === 6, 'D: Feb OZON at col 6', groupsD[1].subIndices[1], 6)
+
+const revenueRowD = findRow(structD2, ['выручка'])
+const revenueSD = parseSeriesFromGroups(revenueRowD, groupsD)
+assert(revenueSD.length === 4, 'D: 4 revenue values', revenueSD.length, 4)
+assert(revenueSD[0] === 800000 + 400000, 'D: Jan = WB+OZON = 1200000', revenueSD[0], 1200000)
+assert(revenueSD[1] === 900000 + 500000, 'D: Feb = WB+OZON = 1400000', revenueSD[1], 1400000)
+
+const profitRowD = findRow(structD2, ['прибыль'])
+const profitSD = parseSeriesFromGroups(profitRowD, groupsD)
+assert(profitSD.length === 4, 'D: 4 profit values', profitSD.length, 4)
+assert(profitSD.every(v => v > 0), 'D: all months profitable', profitSD, 'all > 0')
+
+// ─── Structure D with col[1] label (findRow fallback) ────────────────────────
+
+console.log('\n=== Structure D: findRow finds label in col[1] ===')
+const structD3 = [
+  ['', '2026', '', '', '', '', '', '', '', '', '', '', ''],
+  ['Категория', 'январь', 'WB', 'OZON', 'февраль', 'WB', 'OZON', 'март', 'WB', 'OZON', 'апрель', 'WB', 'OZON'],
+  ['Доходы', 'Выручка (Органика + Выкуп)', '800000', '400000', '900000', '500000', '950000', '550000', '1100000', '600000', '1200000', '700000', 'x'],
+  ['Доходы', 'Чистая прибыль',              '200000', '100000', '250000', '150000', '280000', '170000', '320000',  '180000', '360000',  '200000', 'x'],
+]
+const revenueRowD3 = findRow(structD3, ['выручка'])
+assert(revenueRowD3 !== null, 'D3: findRow finds "Выручка" in col[1]', revenueRowD3, 'not null')
+assert(revenueRowD3?.[0] === 'Доходы', 'D3: row[0] is category "Доходы"', revenueRowD3?.[0], 'Доходы')
+
 // ─── Protection: parseNumber('') must return null ────────────────────────────
 
 console.log('\n=== parseNumber guards ===')
@@ -196,6 +264,8 @@ assert(parseNumber('   ') === null, 'parseNumber("   ") = null', parseNumber('  
 assert(parseNumber('0') === 0, 'parseNumber("0") = 0', parseNumber('0'), 0)
 assert(parseNumber('1 500 000') === 1500000, 'parseNumber("1 500 000") = 1500000', parseNumber('1 500 000'), 1500000)
 assert(parseNumber('−500 000') === -500000, 'parseNumber("−500 000") = -500000', parseNumber('−500 000'), -500000)
+assert(parseNumber('1,200,000') === 1200000, 'parseNumber("1,200,000") = 1200000 (multi-comma thousands)', parseNumber('1,200,000'), 1200000)
+assert(parseNumber('1.200.000,50') === 1200000.5, 'parseNumber("1.200.000,50") = 1200000.5 (European format)', parseNumber('1.200.000,50'), 1200000.5)
 
 // ─── Protection: no fake zeros when row not found ────────────────────────────
 

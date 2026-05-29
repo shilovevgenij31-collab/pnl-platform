@@ -660,9 +660,22 @@ function dedupeBullets(lines: string[], lead?: string, note?: string, max = 4): 
 
 function parseNumber(value: string): number | null {
   if (!value?.trim()) return null
-  const normalized = value.replace(/[^\d,.\-−]/g, '').replace('−', '-').replace(',', '.')
-  if (!normalized) return null
-  const parsed = Number(normalized)
+  // Strip whitespace, currency symbols and other non-numeric chars
+  let s = value.replace(/[^\d,.\-−]/g, '').replace('−', '-')
+  if (!s) return null
+  const commaCount = (s.match(/,/g) ?? []).length
+  const dotCount   = (s.match(/\./g) ?? []).length
+  if (commaCount > 1) {
+    // Multiple commas → thousands separators: "1,200,000" → "1200000"
+    s = s.replace(/,/g, '')
+  } else if (dotCount > 1) {
+    // Multiple dots + single comma → European: "1.200.000,50" → "1200000.50"
+    s = s.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Single comma OR single dot — treat comma as decimal: "1200,50" → "1200.50"
+    s = s.replace(',', '.')
+  }
+  const parsed = Number(s)
   return Number.isFinite(parsed) ? parsed : null
 }
 
@@ -682,8 +695,13 @@ function findRow(source: ParsedSource | null, names: string[]): string[] | null 
   if (!source) return null
   return (
     source.rows.find((row) => {
-      const label = cleanText(row[0] ?? '').toLowerCase()
-      return names.some((name) => label.includes(name.toLowerCase()))
+      const label0 = cleanText(row[0] ?? '').toLowerCase()
+      // Also check col[1] — handles files where col[0] is a group category and col[1] is the metric label
+      const label1 = cleanText(row[1] ?? '').toLowerCase()
+      return names.some((name) => {
+        const lc = name.toLowerCase()
+        return label0.includes(lc) || label1.includes(lc)
+      })
     }) ?? null
   )
 }
@@ -793,11 +811,17 @@ function detectMonthGroups(rows: string[][]): MonthGroup[] {
     const channelIndices: number[] = []
 
     for (let i = startIdx; i < endIdx; i++) {
-      const cell = (channelRow[i] ?? '').trim()
-      if (TOTAL_CELL_RE.test(cell) || TOTAL_CELL_LOOSE_RE.test(cell)) {
-        if (totalIdx < 0) totalIdx = i   // first "Итого" wins
-      } else if (CHANNEL_RE.test(cell)) {
-        // WB/OZON can appear at startIdx (first subcolumn) or after it
+      const channelCell = (channelRow[i] ?? '').trim()
+      // Fall back to same header row for inline WB/OZON: e.g. [январь, WB, OZON, февраль, ...]
+      const sameRowCell = i > startIdx ? (monthRow[i] ?? '').trim() : ''
+      // Check channelRow cell first; fall through to same-row cell only when no TOTAL/CHANNEL match
+      if (TOTAL_CELL_RE.test(channelCell) || TOTAL_CELL_LOOSE_RE.test(channelCell)) {
+        if (totalIdx < 0) totalIdx = i
+      } else if (CHANNEL_RE.test(channelCell)) {
+        channelIndices.push(i)
+      } else if (TOTAL_CELL_RE.test(sameRowCell) || TOTAL_CELL_LOOSE_RE.test(sameRowCell)) {
+        if (totalIdx < 0) totalIdx = i
+      } else if (CHANNEL_RE.test(sameRowCell)) {
         channelIndices.push(i)
       }
     }
