@@ -4,7 +4,7 @@ import { OpenAIProvider } from './openai'
 import type { AIProvider } from './provider'
 
 export function getAIProviderConfig() {
-  const provider = process.env.AI_PROVIDER || 'openrouter'
+  const provider = process.env.AI_PROVIDER || 'openai'
 
   if (provider === 'claude') {
     return {
