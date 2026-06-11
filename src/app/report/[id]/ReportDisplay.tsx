@@ -1638,15 +1638,15 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
   const fixedBase = (facts.expenseBreakdown.find((item) => /ук/i.test(item.label))?.amount ?? 0)
     + (facts.expenseBreakdown.find((item) => /фот/i.test(item.label))?.amount ?? 0)
     + (facts.expenseBreakdown.find((item) => /аренд/i.test(item.label))?.amount ?? 0)
-  const targetMargin = facts.targetMargin ?? 10
-  const targetRevenue = facts.breakevenRevenue !== null ? Math.round(facts.breakevenRevenue / (1 - targetMargin / 100)) : null
+  const targetMargin = facts.targetMargin ?? null
+  const targetRevenue = facts.breakevenRevenue !== null && targetMargin !== null ? Math.round(facts.breakevenRevenue / (1 - targetMargin / 100)) : null
   const breakevenProgress =
     facts.avgRevenue !== null && facts.breakevenRevenue !== null && facts.breakevenRevenue > 0
       ? Math.round((facts.avgRevenue / facts.breakevenRevenue) * 100)
       : null
   const annualLeak = gap !== null ? gap * 12 : null
   const allProfitable = facts.totalMonths > 0 && facts.profitableMonths === facts.totalMonths
-  const marginBelowTarget = facts.avgMargin !== null && facts.avgMargin < targetMargin
+  const marginBelowTarget = facts.avgMargin !== null && targetMargin !== null && facts.avgMargin < targetMargin
   const aboveBreakeven = gap !== null && gap <= 0
   const bestMonth = facts.bestMonthLabel && facts.bestMonthProfit !== null ? `${facts.bestMonthLabel} / ${formatCurrency(facts.bestMonthProfit, true)}` : 'лучший месяц найден в данных'
   const worstMonth = facts.worstMonthLabel && facts.worstMonthProfit !== null ? `${facts.worstMonthLabel} / ${formatCurrency(facts.worstMonthProfit, true)}` : 'худший месяц найден в данных'
@@ -1773,15 +1773,15 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
     {
       id: 'breakeven',
       title: aboveBreakeven ? 'Запас прочности' : 'Порог выживания',
-      kicker: aboveBreakeven ? (marginBelowTarget ? 'Маржа ниже цели' : 'Выше порога') : 'Нет запаса прочности',
-      tone: aboveBreakeven ? (marginBelowTarget ? 'amber' : 'green') : toneForGap(gap),
+      kicker: aboveBreakeven ? 'Запас прочности' : 'Нет запаса прочности',
+      tone: aboveBreakeven ? 'green' : toneForGap(gap),
       icon: Gauge,
       value: aboveBreakeven
         ? (gap !== null ? `Запас ${formatCurrency(-gap, true)}/мес` : 'Выше порога')
         : breakevenProgress !== null ? `${breakevenProgress}% от порога` : 'Порог рассчитан',
       support: aboveBreakeven
-        ? (marginBelowTarget
-            ? `Маржа ${facts.avgMargin !== null ? facts.avgMargin.toFixed(1) + '%' : ''} — до цели ${targetMargin}% ещё есть разрыв`
+        ? (marginBelowTarget && targetMargin !== null
+            ? `Средняя выручка покрывает расходы с запасом. Маржа ${facts.avgMargin !== null ? facts.avgMargin.toFixed(1) + '%' : ''} — цель ${targetMargin}%`
             : 'Средняя выручка уверенно покрывает расходную базу')
         : gap !== null ? `Не хватает ${formatCurrency(gap, true)}/мес` : 'Средняя выручка близка к порогу',
       statusLabel: aboveBreakeven ? 'Выше порога' : (gap !== null && gap > 0 ? 'Ниже порога' : 'По отчёту'),
@@ -1794,9 +1794,11 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
           ? `Запас прочности — ${formatCurrency(-gap, true)}/мес или ${formatCurrency(-gap * 12, true)}/год. Это буфер на случай слабого периода, роста расходов или операционной ошибки. Его нужно наращивать, а не проедать.`
           : 'Бизнес работает с запасом над порогом безубыточности. Это буфер на слабые периоды и рост расходов.',
         `${formatCurrency(facts.breakevenRevenue, true)} — нижняя граница выживания. Бизнес её превышает, но это не цель: без целевой маржи нет развития, резервов и устойчивости к рискам.`,
-        targetRevenue !== null
+        targetRevenue !== null && targetMargin !== null
           ? `Для достижения маржи ${targetMargin}% нужен ориентир около ${formatCurrency(targetRevenue, true)}/мес. При текущей выручке разрыв — в структуре расходов и марже по отдельным каналам.`
-          : `Целевая маржа ${targetMargin}% требует либо роста выручки без пропорционального роста расходов, либо снижения расходной базы на управляемых статьях.`,
+          : targetMargin !== null
+            ? `Целевая маржа ${targetMargin}% требует либо роста выручки без пропорционального роста расходов, либо снижения расходной базы на управляемых статьях.`
+            : 'Для наращивания маржи нужно зафиксировать целевой ориентир рентабельности и считать разрыв по каждому каналу.',
       ] : [
         gap !== null
           ? `Разрыв ${formatCurrency(gap, true)}/мес может казаться управляемым на фоне оборота, но как средняя ситуация он превращается примерно в ${formatCurrency(annualLeak, true)} годовой потери. Это не мелкий недобор, а деньги, которые забираются из развития, маркетинга, команды и резерва.`
@@ -1808,7 +1810,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
         ? (targetRevenue !== null ? `Цель: маржа ${targetMargin}% ≈ ${formatCurrency(targetRevenue, true)}/мес.` : undefined)
         : (targetRevenue !== null ? `Для маржи ${targetMargin}% нужен ориентир около ${formatCurrency(targetRevenue, true)}.` : undefined),
       actionText: aboveBreakeven
-        ? `Бизнес выше порога выживания — управленческая цель теперь другая: выйти на целевую маржу ${targetMargin}% и сформировать запас прочности. Следующий шаг — проверить, какие каналы и товарные группы дают маржу выше средней, и масштабировать именно их, не жертвуя прибыльностью ради оборота.`
+        ? `Бизнес выше порога выживания — управленческая цель теперь другая: выйти на целевую маржу${targetMargin !== null ? ` ${targetMargin}%` : ''} и сформировать запас прочности. Следующий шаг — проверить, какие каналы и товарные группы дают маржу выше средней, и масштабировать именно их, не жертвуя прибыльностью ради оборота.`
         : gap !== null && gap > 0
           ? `Порог — нижняя граница выживания, не цель. Без запаса прочности любой слабый месяц или рост расходной базы снова отправляет бизнес в минус. Управленческая цель — снизить фиксированную базу и проверить, какая выручка реально даёт нормальную маржу.`
           : 'Бизнес работает около порога безубыточности. Нужно убедиться, что есть запас на случай слабого месяца или роста расходов.',
@@ -2396,13 +2398,18 @@ function BreakevenPreview({ current, breakeven, gap, targetRevenue, targetMargin
   targetRevenue?: number | null
   targetMargin?: number | null
 }) {
-  const progress = current !== null && breakeven !== null && breakeven > 0 ? clamp((current / breakeven) * 100) : 0
+  const rawProgress = current !== null && breakeven !== null && breakeven > 0 ? (current / breakeven) * 100 : 0
+  const progress = clamp(rawProgress)
   const tone: Tone = gap !== null && gap > 0 ? 'red' : 'green'
+  const pillLabel = gap !== null && gap > 0 ? 'Ниже порога' : rawProgress >= 110 ? 'Выше порога' : 'Около безубыточности'
   return (
     <div className="space-y-2.5">
       <div className="flex items-end justify-between gap-3">
-        <span className="text-[2rem] font-semibold leading-none" style={{ color: TEXT }}>{Math.round(progress)}%</span>
-        <StatusPill tone={tone}>{gap !== null && gap > 0 ? 'Ниже порога' : 'Около безубыточности'}</StatusPill>
+        <div>
+          <span className="text-[2rem] font-semibold leading-none" style={{ color: TEXT }}>{Math.round(rawProgress)}%</span>
+          <p className="mt-0.5 text-xs" style={{ color: TEXT3 }}>покрытие точки безубыточности</p>
+        </div>
+        <StatusPill tone={tone}>{pillLabel}</StatusPill>
       </div>
       <div className="h-3 overflow-hidden rounded-full" style={{ background: '#EEF2F7' }}>
         <div className="h-full rounded-full" style={{ width: `${progress}%`, background: TONES[tone].fill }} />
@@ -2424,7 +2431,7 @@ function BreakevenPreview({ current, breakeven, gap, targetRevenue, targetMargin
         )}
         {targetRevenue != null && (
           <div className="rounded-xl border px-2.5 py-1.5" style={{ background: TONES.indigo.bg, borderColor: TONES.indigo.border }}>
-            <p className="text-xs font-medium" style={{ color: TEXT3 }}>Цель ({targetMargin ?? 10}% маржи)</p>
+            <p className="text-xs font-medium" style={{ color: TEXT3 }}>Цель{targetMargin != null ? ` (${targetMargin}% маржи)` : ' по марже'}</p>
             <p className="mt-0.5 text-sm font-semibold leading-snug" style={{ color: TONES.indigo.text }}>{formatCurrency(targetRevenue, true)}</p>
           </div>
         )}
@@ -2504,7 +2511,7 @@ function CardPreview({
           </div>
         )
       case 'actions':
-        return <ScenarioPlanPanel />
+        return <ScenarioPlanPanel actions={pnlFacts.actions} />
       case 'limitations':
         return null
       case 'anomalies':
@@ -2686,11 +2693,11 @@ function BulletPreview({ items }: { items: string[] }) {
   )
 }
 
-function ScenarioPlanPanel() {
+function ScenarioPlanPanel({ actions = [] }: { actions?: string[] }) {
   const plan = [
-    { window: '7 дней', action: 'Собрать P&L по направлениям или источникам выручки: выручка, прямые расходы, маржа.' },
-    { window: '14 дней', action: 'Разделить направления на прибыльные, нейтральные и убыточные.' },
-    { window: '30 дней', action: 'Принять разные решения по группам: масштабировать, выравнивать, переосмыслять.' },
+    { window: '7 дней', action: actions[0] || 'Собрать P&L по направлениям или источникам выручки: выручка, прямые расходы, маржа.' },
+    { window: '14 дней', action: actions[1] || 'Разделить направления на прибыльные, нейтральные и убыточные.' },
+    { window: '30 дней', action: actions[2] || 'Принять разные решения по группам: масштабировать, выравнивать, переосмыслять.' },
   ]
   const dangerous = [
     'Не резать расходы вслепую',
