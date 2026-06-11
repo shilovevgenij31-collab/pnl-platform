@@ -747,7 +747,7 @@ function extractConstraintTitle(content: string): string {
   }
   const anyBold = content.match(/\*\*([^*]{15,120})\*\*/)
   if (anyBold?.[1]) return cleanText(anyBold[1])
-  return firstSentence(content, 'Главное ограничение определено.')
+  return firstSentence(content, 'Главное ограничение определено.', 120)
 }
 
 function extractHypothesisVerdict(content: string): string | null {
@@ -1172,8 +1172,8 @@ function buildGoldrattFacts(report: string, sections: ReportSection[], sourceTex
      'Только после этого решать, что делегировать или расширять.']
 
   const constraintTitle = extractConstraintTitle(constraintContent)
-  const diagnosis = firstSentence(constraintContent, 'Система упирается в одно управленческое ограничение.')
-  const constraint = ruSanitize(firstSentence(constraintContent, 'Главное ограничение определено.'))
+  const diagnosis = firstSentence(constraintContent, 'Система упирается в одно управленческое ограничение.', 300)
+  const constraint = ruSanitize(firstSentence(constraintContent, 'Главное ограничение определено.', 300))
   const futureConstraint = firstSentence(limitationsSection?.content ?? '', '', 180) || null
   const hypothesisVerdict = extractHypothesisVerdict(hypothesisContent)
   const hypothesisSnippet = extractHypothesisSnippet(hypothesisContent)
