@@ -590,7 +590,9 @@ function firstSentence(text: string, fallback: string, max = 170): string {
   const cleaned = cleanText(text)
   if (!cleaned) return fallback
   const sentence = cleaned.split(/[.!?]/).find((chunk) => chunk.trim().length > 20) ?? cleaned
-  return sentence.length > max ? `${sentence.slice(0, max - 1).trim()}…` : sentence
+  if (sentence.length <= max) return sentence
+  const cut = sentence.lastIndexOf(' ', max - 2)
+  return `${sentence.slice(0, cut > max / 2 ? cut : max - 1).trim()}…`
 }
 
 function uniqueBullets(lines: string[], max = 4): string[] {
