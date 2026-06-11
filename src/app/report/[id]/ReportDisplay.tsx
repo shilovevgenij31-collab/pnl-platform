@@ -1772,7 +1772,7 @@ function buildPnlDashboardCardsV2(facts: PnlFacts): DetailCard[] {
     {
       id: 'breakeven',
       title: aboveBreakeven ? 'Запас прочности' : 'Порог выживания',
-      kicker: aboveBreakeven ? 'Запас прочности' : 'Порог выживания',
+      kicker: aboveBreakeven ? (marginBelowTarget ? 'Маржа ниже цели' : 'Выше порога') : 'Нет запаса прочности',
       tone: aboveBreakeven ? (marginBelowTarget ? 'amber' : 'green') : toneForGap(gap),
       icon: Gauge,
       value: aboveBreakeven
@@ -2580,14 +2580,13 @@ function CardPreview({
       case 'constraint':
         return (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-              {goldrattFacts.actualMarginLabel && <MetricChip label="Факт" value={goldrattFacts.actualMarginLabel} tone="amber" />}
-              {goldrattFacts.targetMarginLabel && <MetricChip label="Цель" value={goldrattFacts.targetMarginLabel} tone="blue" />}
-              {goldrattFacts.teamLabel && <MetricChip label="Команда" value={goldrattFacts.teamLabel} tone="slate" />}
-              <MetricChip label="Симптом" value="Заявки просели" tone="red" />
-              <MetricChip label="Роль собственника" value="Стратегия + операционка" tone="indigo" />
-              <MetricChip label="Фон" value="Много гипотез" tone="amber" />
-            </div>
+            {(goldrattFacts.actualMarginLabel || goldrattFacts.targetMarginLabel || goldrattFacts.teamLabel) && (
+              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                {goldrattFacts.actualMarginLabel && <MetricChip label="Факт" value={goldrattFacts.actualMarginLabel} tone="amber" />}
+                {goldrattFacts.targetMarginLabel && <MetricChip label="Цель" value={goldrattFacts.targetMarginLabel} tone="blue" />}
+                {goldrattFacts.teamLabel && <MetricChip label="Команда" value={goldrattFacts.teamLabel} tone="slate" />}
+              </div>
+            )}
             <GoldrattConstraintPreview facts={goldrattFacts} />
             <div className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Почему это ограничение</p>
@@ -2619,7 +2618,7 @@ function CardPreview({
             </div>
             <div className="grid gap-3 lg:grid-cols-3">
               <div className="rounded-2xl border p-3" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Использовать ограничение</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Убрать лишнее с ограничения</p>
                 <BulletPreview items={goldrattFacts.exploitActions.length > 0 ? goldrattFacts.exploitActions.slice(0, 3) : [
                   'На ближайшие 30 дней убрать с собственника всё, что не двигает выбранный поток денег.',
                   'Не открывать новые гипотезы, пока непонятно, какое направление даёт деньги быстрее всего.',
@@ -2627,7 +2626,7 @@ function CardPreview({
                 ]} />
               </div>
               <div className="rounded-2xl border p-3" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Подчинить систему</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Выстроить систему вокруг него</p>
                 <BulletPreview items={goldrattFacts.subordinateActions.length > 0 ? goldrattFacts.subordinateActions.slice(0, 3) : [
                   'Команда, контент, продукт и партнёрские решения — только под один выбранный приоритет.',
                   'Если задача не помогает выбранному направлению сделать продажу — она уходит в backlog.',
@@ -2635,7 +2634,7 @@ function CardPreview({
                 ]} />
               </div>
               <div className="rounded-2xl border p-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить ограничение</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить только после выбора</p>
                 <BulletPreview items={goldrattFacts.elevateActions.length > 0 ? goldrattFacts.elevateActions.slice(0, 3) : [
                   'После очистки фокуса — делегировать операционку, которая регулярно затягивает собственника.',
                   'Закрепить роли с партнёром: кто отвечает за продажи, кто за delivery.',
@@ -3306,7 +3305,7 @@ function pnlActionContent(card: DetailCard): { title: string; main: string; text
     case 'profit-drag':
       return {
         title: 'Что делать с расходной базой',
-        main: 'Разобрать крупные статьи расходов, а не резать всё подряд',
+        main: 'Разные расходы требуют разного решения — не одного ножа по всем статьям',
         text: card.actionText ?? 'Главный риск — начать экономить на мелких статьях и не тронуть настоящую причину. Если проблема сидит в структуре крупных расходов, экономия на мелких позициях не исправит маржу. Первое действие: собрать расходы по направлениям и найти, где база не соответствует выручке.',
         tone: 'amber',
       }
@@ -3347,10 +3346,8 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
     case 'constraint':
       return {
         title: 'Что это значит',
-        main: card.kicker && card.kicker !== 'Что ограничивает результат'
-          ? card.kicker
-          : 'Снять ограничение прежде, чем усиливать продажи',
-        text: card.detailLead ?? card.support ?? 'Главное ограничение тормозит рост результата сильнее, чем любая другая проблема. Пока оно не снято, оптимизация остального только добавляет нагрузку.',
+        main: 'Ограничение — не список проблем, а одна точка застревания потока денег',
+        text: 'Пока это место не снято, маркетинг, найм и новые продукты только добавляют нагрузку в ту же точку. Бизнес становится активнее — поток денег не ускоряется. Сначала снять ограничение, потом усиливать остальное.',
         tone: 'red',
       }
     default:
@@ -3536,7 +3533,7 @@ function GoldrattInfoBlock({ facts }: { facts: GoldrattFacts | null }) {
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         {[
-          { label: 'Основа вывода', value: 'Контекст предпринимателя, описание боли и документы, если они приложены.', tone: 'blue' as Tone },
+          { label: 'Что известно', value: 'Контекст предпринимателя, описание ситуации и документы, если приложены.', tone: 'blue' as Tone },
           { label: 'Что ищем', value: 'Не список проблем, а одно ограничение, которому нужно подчинить решения.', tone: 'indigo' as Tone },
           { label: 'Уровень уверенности', value: `${facts?.confidenceLabel ?? 'средний'}: вывод основан на контексте, а не на полной CRM-карте процесса.`, tone: 'slate' as Tone },
         ].map((item) => (
@@ -3997,7 +3994,9 @@ function DetailDrawer({
 
         {bullets.length > 0 && (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: CARD }}>
-            <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>Что это значит</h3>
+            <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>
+              {!isPnl && card.id === 'constraint' ? 'Почему это ограничение' : 'Что это значит'}
+            </h3>
             <div className="space-y-2 text-sm leading-relaxed" style={{ color: '#334155' }}>
               {bullets.map((bullet) => (
                 <div key={bullet} className="flex gap-2">
