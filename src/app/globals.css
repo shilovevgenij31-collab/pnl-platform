@@ -52,6 +52,22 @@
   --radius: 0.75rem;
 }
 
+/* ── Semantic brand colors (pnl / goldratt / risk / caution) ── */
+:root {
+  --pnl: #0d9488;
+  --pnl-foreground: #ffffff;
+  --pnl-muted: #0d948814;
+  --pnl-border: #0d948830;
+  --goldratt: #7c3aed;
+  --goldratt-foreground: #ffffff;
+  --goldratt-muted: #7c3aed14;
+  --goldratt-border: #7c3aed30;
+  --risk: #dc2626;
+  --risk-muted: #dc26260f;
+  --caution: #d97706;
+  --caution-muted: #d9770614;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -59,6 +75,15 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ── Shadow utilities matching Lovable design system ── */
+.report-shadow {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+}
+
+.report-shadow-lg {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.04);
 }
 
 /* ============================================

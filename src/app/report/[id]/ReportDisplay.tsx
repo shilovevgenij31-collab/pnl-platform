@@ -1873,18 +1873,17 @@ function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
 
 function DemoBanner() {
   return (
-    <div className="print:hidden" style={{ background: '#EFF6FF', borderBottom: `1px solid ${BORDER}` }}>
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 sm:px-6">
-        <p className="text-xs leading-snug sm:text-sm" style={{ color: '#1E40AF' }}>
-          <span className="font-semibold">Демо-отчёт</span> · пример управленческого отчёта без AI-вызова.
+    <div className="print:hidden" style={{ background: '#F8FAFC', borderBottom: `1px solid ${BORDER}` }}>
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-1.5 sm:px-6">
+        <p className="text-xs" style={{ color: TEXT3 }}>
+          Демо-отчёт — пример управленческого отчёта без AI-вызова
         </p>
         <Link
           href="/analyze"
-          className="inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold"
-          style={{ background: '#DBEAFE', color: '#1D4ED8' }}
+          className="text-xs font-medium transition-colors hover:underline"
+          style={{ color: TEXT2 }}
         >
-          Сделать свой анализ
-          <ArrowRight className="h-3.5 w-3.5" />
+          Сделать свой анализ →
         </Link>
       </div>
     </div>
@@ -1984,21 +1983,21 @@ function Header({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end print:hidden">
-              <button onClick={onCopyLink} className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT }}>
-                {copiedLink ? <Check className="h-4 w-4 text-emerald-500" /> : <Link2 className="h-4 w-4" />}
-                Ссылка
+            <div className="hidden lg:flex items-center gap-2 print:hidden">
+              <button onClick={onCopyLink} className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
+                {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Link2 className="h-3.5 w-3.5" />}
+                {copiedLink ? 'Скопировано' : 'Ссылка'}
               </button>
-              <button onClick={onCopyReport} className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT }}>
-                {copiedReport ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                Отчёт
+              <button onClick={onCopyReport} className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
+                {copiedReport ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                {copiedReport ? 'Скопировано' : 'Отчёт'}
               </button>
-              <button onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT }}>
-                <Printer className="h-4 w-4" />
+              <button onClick={() => window.print()} className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
+                <Printer className="h-3.5 w-3.5" />
                 PDF
               </button>
-              <Link href="/analyze" className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white" style={{ background: meta.accent }}>
-                <ArrowRight className="h-4 w-4" />
+              <Link href="/analyze" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ background: meta.accent }}>
+                <ArrowRight className="h-3.5 w-3.5" />
                 Новый анализ
               </Link>
             </div>
