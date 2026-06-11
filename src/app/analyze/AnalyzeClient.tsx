@@ -194,6 +194,11 @@ type SheetAnalysis = {
   status: SheetQualityStatus
   normalizedText: string
   truncated: boolean
+  detectedPeriods: string[]
+  recentPeriodScore: number
+  revenueKeywordFound: boolean
+  expenseKeywordFound: boolean
+  profitKeywordFound: boolean
 }
 
 function cellToText(value: CellValue): string {
@@ -242,6 +247,43 @@ function keywordHits(text: string, keywords: string[]): string[] {
   return keywords.filter((keyword) => lower.includes(keyword))
 }
 
+function isPeriodHeader(val: string): boolean {
+  const s = val.trim().toLowerCase()
+  if (!s) return false
+  if (/^20[2-3]\d$/.test(s)) return true
+  if (/20[2-3]\d/.test(s)) return true
+  if (/^q[1-4]$/.test(s) || /квартал/.test(s)) return true
+  // Full Russian month names (long enough to be unambiguous)
+  if (/^(январ|феврал|март|апрел|июн|июл|август|сентябр|октябр|ноябр|декабр)/.test(s)) return true
+  // Short abbreviations — must be followed by non-Cyrillic or end of string
+  // prevents "маркетинг" (мар+к), "маржа" (мар+ж), "декларация" (дек+л) from matching
+  if (/^(янв|фев|мар|апр|май|авг|сен|окт|ноя|дек)([^а-яёА-ЯЁ]|$)/.test(s)) return true
+  if (/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/.test(s)) return true
+  return false
+}
+
+function detectPeriodColumns(rows: string[][]): { indices: number[]; years: number[] } {
+  if (rows.length === 0) return { indices: [], years: [] }
+  const colCount = rows.reduce((max, row) => Math.max(max, row.length), 0)
+  const periodIndices: number[] = []
+  const allYears: number[] = []
+
+  for (let ci = 0; ci < colCount; ci++) {
+    let found = false
+    for (let ri = 0; ri < Math.min(6, rows.length) && !found; ri++) {
+      const val = rows[ri]?.[ci] ?? ''
+      if (isPeriodHeader(val)) {
+        found = true
+        periodIndices.push(ci)
+        const ym = /20([2-3]\d)/.exec(val)
+        if (ym) allYears.push(2000 + parseInt(ym[1]))
+      }
+    }
+  }
+
+  return { indices: periodIndices, years: [...new Set(allYears)].sort() }
+}
+
 function analyzeSheet(sheetName: string, rawRows: CellValue[][], fileName: string): SheetAnalysis {
   const rows = normalizeRows(rawRows)
   const flat = rows.flat()
@@ -283,21 +325,67 @@ function analyzeSheet(sheetName: string, rawRows: CellValue[][], fileName: strin
   if (nonEmptyRows >= 6 && nonEmptyColumns >= 3) score += 10
   score -= Math.min(30, formulaErrorsCount * 5)
   if (hardBlockReasons.length > 0) score = Math.min(score, 39)
-  score = Math.max(0, Math.min(100, score))
 
+  // Period detection + recency bonus
+  const MAX_PERIOD_COLS = 36
+  const { indices: periodColIndices, years: detectedYears } = detectPeriodColumns(rows)
+  const detectedPeriods = detectedYears.map(String)
+  let recentPeriodScore = 0
+  if (detectedYears.includes(2024)) recentPeriodScore += 5
+  if (detectedYears.includes(2025)) recentPeriodScore += 5
+  if (detectedYears.includes(2026)) recentPeriodScore += 5
+
+  score = Math.max(0, Math.min(100, score + recentPeriodScore))
+
+  // Column-priority + row-based truncation (no mid-row cuts)
   const normalizedCsv = rowsToCsv(rows)
-  const normalizedTooLarge = normalizedCsv.length > MAX_NORMALIZED_CHARS
-  const truncatedCsv = normalizedTooLarge ? normalizedCsv.slice(0, MAX_NORMALIZED_CHARS) : normalizedCsv
-  if (normalizedTooLarge) warnings.push('Таблица была обрезана до безопасного размера для анализа.')
+  let csvRows = rows
+  let truncated = false
+
+  if (normalizedCsv.length > MAX_NORMALIZED_CHARS) {
+    if (periodColIndices.length > MAX_PERIOD_COLS) {
+      // Wide table: keep non-period cols + last MAX_PERIOD_COLS period cols (most recent)
+      const keptPeriodSet = new Set(periodColIndices.slice(-MAX_PERIOD_COLS))
+      const allColCount = rows.reduce((m, r) => Math.max(m, r.length), 0)
+      const nonPeriodIndices = Array.from({ length: allColCount }, (_, i) => i).filter(i => !periodColIndices.includes(i))
+      const keepIndices = [...new Set([...nonPeriodIndices, ...keptPeriodSet])].sort((a, b) => a - b)
+      csvRows = rows.map(row => keepIndices.map(i => row[i] ?? ''))
+    }
+
+    const attempt = csvRows === rows ? normalizedCsv : rowsToCsv(csvRows)
+    if (attempt.length > MAX_NORMALIZED_CHARS) {
+      // Still too large: row-based truncation (always complete rows)
+      let accumulated = 0
+      let rowLimit = 0
+      for (const row of csvRows) {
+        const line = row.map(csvEscape).join(',') + '\n'
+        if (accumulated + line.length > MAX_NORMALIZED_CHARS) break
+        accumulated += line.length
+        rowLimit++
+      }
+      rowLimit = Math.max(rowLimit, 10)
+      csvRows = csvRows.slice(0, rowLimit)
+      warnings.push(`Данные ограничены: в анализ включены первые ${rowLimit} из ${rows.length} строк.`)
+      truncated = true
+    } else if (periodColIndices.length > MAX_PERIOD_COLS) {
+      const keptCount = Math.min(periodColIndices.length, MAX_PERIOD_COLS)
+      warnings.push(`Широкая таблица: в анализ включены последние ${keptCount} из ${periodColIndices.length} периодов (актуальные).`)
+      truncated = true
+    }
+  }
+
+  const finalCsv = csvRows === rows ? normalizedCsv : rowsToCsv(csvRows)
 
   const status: SheetQualityStatus = hardBlockReasons.length > 0 ? 'blocked' : warnings.length > 0 ? 'warning' : 'good'
   const allWarnings = [...hardBlockReasons, ...warnings]
+  const periodsStr = detectedPeriods.length > 0 ? detectedPeriods.join(', ') : 'нет'
   const metadata = [
     `Источник: Excel-файл ${fileName}`,
     `Лист: ${sheetName}`,
     `Строк: ${nonEmptyRows}`,
     `Колонок: ${nonEmptyColumns}`,
     `Quality score: ${score}`,
+    `Периоды: ${periodsStr}`,
     `Предупреждения: ${allWarnings.length ? allWarnings.join(' | ') : 'нет'}`,
     '',
     '=== Очищенная таблица для анализа ===',
@@ -317,8 +405,13 @@ function analyzeSheet(sheetName: string, rawRows: CellValue[][], fileName: strin
     warnings,
     hardBlockReasons,
     status,
-    normalizedText: `${metadata}\n${truncatedCsv}`,
-    truncated: normalizedTooLarge,
+    normalizedText: `${metadata}\n${finalCsv}`,
+    truncated,
+    detectedPeriods,
+    recentPeriodScore,
+    revenueKeywordFound: revenueHits.length > 0,
+    expenseKeywordFound: expenseHits.length > 0,
+    profitKeywordFound: profitHits.length > 0,
   }
 }
 
@@ -326,6 +419,12 @@ function qualityStatusLabel(status: SheetQualityStatus): string {
   if (status === 'good') return 'Данные подходят для анализа'
   if (status === 'warning') return 'Нужна проверка'
   return 'Файл не подходит для анализа'
+}
+
+function shortStatusLabel(status: SheetQualityStatus): string {
+  if (status === 'good') return 'данные подходят'
+  if (status === 'warning') return 'нужна проверка'
+  return 'не подходит'
 }
 
 // ─── Margin & bottleneck options ───────────────────────────────────────────────
@@ -395,12 +494,12 @@ const AGENT_CONFIG = {
     activeBorder: '#6EE7B7',
   },
   goldratt: {
-    badge: 'Голдратт / ограничения',
-    title: 'Анализ ограничения',
-    subtitle: 'Поиск системного ограничения',
+    badge: 'Голдратт / ТОС',
+    title: 'Отчёт по главному ограничению',
+    subtitle: 'Диагностика главного ограничения: что сейчас тормозит рост результата',
     cardDesc:
-      'Находит одно главное бутылочное горлышко по контексту предпринимателя и опциональным документам: где система тормозит, что не надо оптимизировать и как снять ограничение.',
-    cta: 'Запустить анализ ограничения',
+      'Находит одно главное ограничение по контексту предпринимателя и опциональным документам: где система тормозит, что не надо оптимизировать и как снять ограничение.',
+    cta: 'Запустить диагностику ограничения',
     loadingTitle: 'Ищем ограничение',
     icon: Target,
     accent: '#7c3aed',
@@ -665,7 +764,7 @@ export default function AnalyzeClient({ initialAgent }: { initialAgent: AgentTyp
             month: 'long',
             year: 'numeric',
           }),
-          mode: agent === 'pnl' ? 'P&L Analysis' : 'Голдратт / ограничения',
+          mode: agent === 'pnl' ? 'P&L Analysis' : 'Голдратт / ТОС',
         })
         setSavedLocally(true)
         setErrorRequestId(data.requestId || null)
@@ -1060,7 +1159,8 @@ function WhatYouGetCard({ cfg, agent }: { cfg: AgentCfg; agent: AgentType }) {
   const sidebarNote =
     agent === 'pnl'
       ? <>AI анализирует данные за <strong>1–2 минуты</strong> и формирует структурированный консалтинговый отчёт</>
-      : <>AI анализирует ответы и документы <strong>1–2 минуты</strong> и формирует короткий управленческий отчёт</>
+      : <>AI анализирует ответы и документы <strong>1–2 минуты</strong> и формирует диагностику главного ограничения</>
+
 
   return (
     <div className="sticky top-24 space-y-4">
@@ -1247,7 +1347,7 @@ function FileUploadZone({
             raw: false,
           })
           return analyzeSheet(sheetName, rows, file.name)
-        }).sort((a, b) => b.qualityScore - a.qualityScore)
+        }).sort((a, b) => (b.recentPeriodScore + b.qualityScore) - (a.recentPeriodScore + a.qualityScore))
 
         const best = analyses[0]
         if (!best) {
@@ -1338,12 +1438,24 @@ function FileUploadZone({
                   Проверьте данные перед анализом
                 </p>
                 <p className="mt-1 text-xs" style={{ color: TEXT2 }}>
-                  {variant === 'pnl' ? 'В анализ будет отправлена полная очищенная таблица.' : 'В анализ будет отправлен очищенный документ или таблица.'}{currentAnalysis.nonEmptyColumns > PREVIEW_COLS && ' Предпросмотр ограничен 15 колонками — все периоды включены в анализ.'}
+                  {variant === 'pnl' ? 'В анализ будет отправлена очищенная таблица.' : 'В анализ будет отправлен очищенный документ или таблица.'}
+                  {currentAnalysis.truncated && ' Файл слишком широкий: в анализ включены ключевые строки и последние найденные периоды. Проверьте, что выбран нужный лист.'}
                 </p>
                 {variant === 'pnl' && (
-                  <p className="mt-0.5 text-xs" style={{ color: '#94A3B8' }}>
-                    Анализируется лист: «{currentAnalysis.sheetName}». В анализ включено: {currentAnalysis.nonEmptyRows} строк, {currentAnalysis.nonEmptyColumns} колонок.
-                  </p>
+                  <div className="mt-1 text-xs space-y-0.5" style={{ color: '#94A3B8' }}>
+                    <p>Лист: «{currentAnalysis.sheetName}» · Строк: {currentAnalysis.nonEmptyRows} · Колонок в файле: {currentAnalysis.nonEmptyColumns}{currentAnalysis.truncated ? ` (в анализ: приоритетные)` : ''}</p>
+                    {currentAnalysis.detectedPeriods.length > 0 && (
+                      <p>Периоды: {currentAnalysis.detectedPeriods.join(', ')}</p>
+                    )}
+                    <p>
+                      {currentAnalysis.revenueKeywordFound ? '✓ выручка' : '✗ выручка не найдена'}{' · '}
+                      {currentAnalysis.expenseKeywordFound ? '✓ расходы' : '✗ расходы не найдены'}{' · '}
+                      {currentAnalysis.profitKeywordFound ? '✓ прибыль' : '✗ прибыль не найдена'}
+                    </p>
+                    {currentAnalysis.warnings.length > 0 && (
+                      <p style={{ color: '#F59E0B' }}>{currentAnalysis.warnings.join(' ')}</p>
+                    )}
+                  </div>
                 )}
               </div>
               <span
@@ -1366,11 +1478,18 @@ function FileUploadZone({
                   className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                   style={{ borderColor: BORDER, color: TEXT }}
                 >
-                  {sheetAnalyses.map((sheet) => (
-                    <option key={sheet.sheetName} value={sheet.sheetName}>
-                      {sheet.sheetName} · {sheet.qualityScore}/100 · {qualityStatusLabel(sheet.status)}
-                    </option>
-                  ))}
+                  {sheetAnalyses.map((sheet) => {
+                    const periodRange = sheet.detectedPeriods.length > 1
+                      ? ` · ${sheet.detectedPeriods[0]}–${sheet.detectedPeriods[sheet.detectedPeriods.length - 1]}`
+                      : sheet.detectedPeriods.length === 1
+                        ? ` · ${sheet.detectedPeriods[0]}`
+                        : ''
+                    return (
+                      <option key={sheet.sheetName} value={sheet.sheetName}>
+                        {sheet.sheetName}{periodRange} · {sheet.qualityScore}/100 · {shortStatusLabel(sheet.status)}
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
             )}

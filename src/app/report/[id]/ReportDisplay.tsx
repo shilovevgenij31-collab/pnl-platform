@@ -54,7 +54,7 @@ const AGENT_META = {
   pnl: {
     badge: 'Финансовый анализ',
     title: 'P&L / отчёт о прибылях и убытках',
-    subtitle: 'Короткий управленческий обзор по прибыльности с деталями по клику',
+    subtitle: 'Управленческий разбор P&L-отчёта',
     accent: PRIMARY_BLUE,
     accentBg: '#EFF6FF',
     accentBorder: '#BFDBFE',
@@ -62,9 +62,9 @@ const AGENT_META = {
     icon: BarChart3,
   },
   goldratt: {
-    badge: 'Анализ ограничений',
+    badge: 'Голдратт / ТОС',
     title: 'Отчёт по главному ограничению',
-    subtitle: 'Короткий управленческий обзор по системе и её главному ограничению',
+    subtitle: 'Диагностика главного ограничения: что сейчас тормозит рост результата',
     accent: INDIGO,
     accentBg: '#EEF2FF',
     accentBorder: '#C7D2FE',
@@ -1569,7 +1569,7 @@ function buildGoldrattDashboardCards(facts: GoldrattFacts): DetailCard[] {
     {
       id: 'exploit',
       title: 'Как снять ограничение',
-      kicker: 'Использовать → подчинить → расширить',
+      kicker: '5 шагов снятия ограничения',
       tone: 'green',
       icon: Zap,
       value: exploitValue,
@@ -1861,7 +1861,7 @@ function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
   const colors = TONES[tone]
   return (
     <span
-      className="inline-flex w-fit items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none"
+      className="inline-flex w-fit items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold leading-none"
       style={{ background: colors.bg, borderColor: colors.border, color: colors.text }}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: colors.fill }} />
@@ -1946,7 +1946,10 @@ function Header({
                   <Icon className="h-3.5 w-3.5" />
                   {meta.badge}
                 </span>
-                <StatusPill tone="blue">Сформированный отчёт</StatusPill>
+                {data.agentType === 'goldratt'
+                  ? <StatusPill tone="indigo">Диагностика ТОС</StatusPill>
+                  : <StatusPill tone="blue">Управленческий P&L</StatusPill>
+                }
               </div>
 
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl" style={{ color: TEXT }}>
@@ -1954,6 +1957,9 @@ function Header({
               </h1>
               <p className="mt-1.5 max-w-3xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
                 {meta.subtitle}
+              </p>
+              <p className="mt-1 text-xs" style={{ color: TEXT3 }}>
+                Разработано в AdAgency
               </p>
 
               <div className="mt-4 flex flex-wrap gap-3 text-sm" style={{ color: TEXT2 }}>
@@ -2031,7 +2037,7 @@ function _IntroBlock({ agentType }: { agentType: ReportPageData['agentType'] }) 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {items.map((item) => (
           <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
               {item.label}
             </p>
             <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
@@ -2079,7 +2085,7 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {tocItems.map((item) => (
             <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
                 {item.label}
               </p>
               <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
@@ -2108,7 +2114,7 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {items.map((item) => (
           <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
               {item.label}
             </p>
             <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
@@ -2217,7 +2223,7 @@ function MiniTrend({ labels, revenue, profit, accent }: { labels: string[]; reve
         <text x={W - pad.right} y={H - 6} textAnchor="end" fontSize="9" fill={TEXT3}>{labels.at(-1) ?? ''}</text>
       </svg>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]" style={{ color: TEXT3 }}>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ color: TEXT3 }}>
         <span className="flex items-center gap-1">
           <span className="inline-block h-0.5 w-3.5 rounded-full" style={{ background: accent }} />
           Выручка
@@ -2423,7 +2429,7 @@ function ExpensePreview({ items }: { items: ExpenseItem[] }) {
         const pct = item.pct ?? 0
         return (
           <div key={item.label}>
-            <div className="mb-0.5 flex items-center justify-between gap-3 text-[11px]">
+            <div className="mb-0.5 flex items-center justify-between gap-3 text-xs">
               <span style={{ color: TEXT }}>{item.label}</span>
               <span className="font-semibold" style={{ color: tone.text }}>
                 {item.pct !== null ? `${item.pct}%` : formatCurrency(item.amount, true)}
@@ -2503,13 +2509,13 @@ function CardPreview({
     if (card.id === 'profit-drag') {
       return (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
             <MetricChip label="База" value={`${formatCurrency(pnlFacts.expenseBreakdown.slice(0, 3).reduce((sum, item) => sum + (item.amount ?? 0), 0), true)}/мес`} tone="red" />
             <MetricChip label="Разрыв" value={formatCurrency(pnlFacts.gapToBreakeven, true)} tone="amber" />
             <MetricChip label="Порог" value={formatCurrency(pnlFacts.breakevenRevenue, true)} tone="slate" />
           </div>
           <ExpensePreview items={pnlFacts.expenseBreakdown.slice(0, 4)} />
-          <p className="text-[10px] leading-relaxed" style={{ color: TEXT3 }}>
+          <p className="text-xs leading-relaxed" style={{ color: TEXT3 }}>
             % рассчитан от средней выручки — это нагрузка на оборот, а не структура на 100%.
           </p>
         </div>
@@ -2518,7 +2524,7 @@ function CardPreview({
     switch (card.id) {
       case 'diagnosis':
         return (
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="grid grid-cols-2 gap-2 text-xs">
             <MetricChip label="Средняя выручка" value={formatCurrency(pnlFacts.avgRevenue, true)} />
             <MetricChip label="Средние расходы" value={formatCurrency(pnlFacts.avgCosts, true)} tone="red" />
             <MetricChip label="Средняя прибыль за период" value={formatCurrency(pnlFacts.avgProfit, true)} tone={toneForProfit(pnlFacts.avgProfit)} />
@@ -2533,7 +2539,7 @@ function CardPreview({
         return <ExpensePreview items={pnlFacts.expenseBreakdown} />
       case 'losses':
         return (
-          <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
             <MetricChip label="Разрыв до безубыточности" value={formatCurrency(pnlFacts.gapToBreakeven, true)} tone="red" />
             <MetricChip label="Нагрузка топ-3 статей" value={`${pnlFacts.expenseBreakdown.slice(0,3).reduce((s,i) => s+(i.pct??0), 0)}% выручки`} tone="amber" />
             <MetricChip label="Средние расходы" value={formatCurrency(pnlFacts.avgCosts, true)} tone="slate" />
@@ -2547,7 +2553,7 @@ function CardPreview({
       }
       case 'constraint':
         return (
-          <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
             <MetricChip label="Постоянная база (УК+ФОТ+аренда)" value={formatCurrency(pnlFacts.expenseBreakdown.slice(0,3).reduce((s,i)=>s+(i.amount??0),0), true) + '/мес'} tone="red" />
             <MetricChip label="Порог безубыточности" value={formatCurrency(pnlFacts.breakevenRevenue, true)} tone="amber" />
             <MetricChip label="Средняя выручка" value={formatCurrency(pnlFacts.avgRevenue, true)} tone="slate" />
@@ -2559,7 +2565,7 @@ function CardPreview({
         return null
       case 'anomalies':
         return (
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="grid grid-cols-2 gap-2 text-xs">
             <MetricChip label="Худший месяц" value={pnlFacts.anomalies.find((item) => /худший месяц/i.test(item))?.replace(/^Худший месяц:\s*/i, '') ?? '—'} tone="red" />
             <MetricChip label="Лучший месяц" value={pnlFacts.anomalies.find((item) => /лучший месяц/i.test(item))?.replace(/^Лучший месяц:\s*/i, '') ?? '—'} tone="green" />
           </div>
@@ -2574,7 +2580,7 @@ function CardPreview({
       case 'constraint':
         return (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
               {goldrattFacts.actualMarginLabel && <MetricChip label="Факт" value={goldrattFacts.actualMarginLabel} tone="amber" />}
               {goldrattFacts.targetMarginLabel && <MetricChip label="Цель" value={goldrattFacts.targetMarginLabel} tone="blue" />}
               {goldrattFacts.teamLabel && <MetricChip label="Команда" value={goldrattFacts.teamLabel} tone="slate" />}
@@ -2584,14 +2590,14 @@ function CardPreview({
             </div>
             <GoldrattConstraintPreview facts={goldrattFacts} />
             <div className="rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Почему это ограничение</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Почему это ограничение</p>
               <div className="space-y-1.5">
                 {(goldrattFacts.evidenceItems.length > 0 ? goldrattFacts.evidenceItems.slice(0, 3) : [
                   'Почти каждый путь к росту проходит через один ресурс — внимание и решения собственника.',
                   'Продажи зависят от ручного внимания, а не от повторяемого процесса.',
                   'Новые инициативы добавляют нагрузку в тот же узел, вместо того чтобы ускорять поток денег.',
                 ]).map((item, i) => (
-                  <div key={i} className="flex gap-2 text-[11px] leading-snug">
+                  <div key={i} className="flex gap-2 text-xs leading-snug">
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: '#EEF2FF', color: '#3730A3' }}>{i + 1}</span>
                     <span style={{ color: TEXT }}>{item}</span>
                   </div>
@@ -2603,7 +2609,7 @@ function CardPreview({
       case 'exploit':
         return (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-1 text-[10px]">
+            <div className="flex flex-wrap items-center gap-1 text-xs">
               {(['Найти', 'Использовать', 'Подчинить', 'Расширить', 'Найти следующее'] as const).map((step, i, arr) => (
                 <span key={step} className="flex items-center gap-1">
                   <span className="rounded-full px-2 py-0.5 font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>{step}</span>
@@ -2613,7 +2619,7 @@ function CardPreview({
             </div>
             <div className="grid gap-3 lg:grid-cols-3">
               <div className="rounded-2xl border p-3" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Использовать ограничение</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Использовать ограничение</p>
                 <BulletPreview items={goldrattFacts.exploitActions.length > 0 ? goldrattFacts.exploitActions.slice(0, 3) : [
                   'На ближайшие 30 дней убрать с собственника всё, что не двигает выбранный поток денег.',
                   'Не открывать новые гипотезы, пока непонятно, какое направление даёт деньги быстрее всего.',
@@ -2621,7 +2627,7 @@ function CardPreview({
                 ]} />
               </div>
               <div className="rounded-2xl border p-3" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Подчинить систему</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Подчинить систему</p>
                 <BulletPreview items={goldrattFacts.subordinateActions.length > 0 ? goldrattFacts.subordinateActions.slice(0, 3) : [
                   'Команда, контент, продукт и партнёрские решения — только под один выбранный приоритет.',
                   'Если задача не помогает выбранному направлению сделать продажу — она уходит в backlog.',
@@ -2629,7 +2635,7 @@ function CardPreview({
                 ]} />
               </div>
               <div className="rounded-2xl border p-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить ограничение</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить ограничение</p>
                 <BulletPreview items={goldrattFacts.elevateActions.length > 0 ? goldrattFacts.elevateActions.slice(0, 3) : [
                   'После очистки фокуса — делегировать операционку, которая регулярно затягивает собственника.',
                   'Закрепить роли с партнёром: кто отвечает за продажи, кто за delivery.',
@@ -2638,13 +2644,13 @@ function CardPreview({
               </div>
             </div>
             <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#92400E' }}>Не наоборот</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#92400E' }}>Не наоборот</p>
               <p className="mt-1 text-sm leading-snug" style={{ color: '#78350F' }}>
                 Не нанимать, не запускать и не автоматизировать хаос до того, как выбран главный поток денег.
               </p>
             </div>
             <div className="border-t pt-3" style={{ borderColor: BORDER_SOFT }}>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Первые действия</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Первые действия</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 {[
                   { window: '48 часов', color: '#EEF2FF', textColor: '#4338CA', items: goldrattFacts.actionPlan7.length > 0 ? goldrattFacts.actionPlan7.slice(0, 2) : ['Выбрать один поток денег', 'Заморозить новые инициативы'] },
@@ -2652,10 +2658,10 @@ function CardPreview({
                   { window: '14 дней', color: '#F8FAFC', textColor: '#475569', items: goldrattFacts.actionPlan30.length > 0 ? goldrattFacts.actionPlan30.slice(0, 2) : ['Запустить цикл продаж', 'Сделать 20–30 контактов'] },
                 ].map((step) => (
                   <div key={step.window} className="rounded-2xl border p-2.5" style={{ borderColor: BORDER_SOFT, background: step.color }}>
-                    <span className="text-[10px] font-semibold" style={{ color: step.textColor }}>{step.window}</span>
+                    <span className="text-xs font-semibold" style={{ color: step.textColor }}>{step.window}</span>
                     <div className="mt-1 space-y-1">
                       {step.items.map((item, i) => (
-                        <p key={i} className="text-[11px] leading-snug" style={{ color: TEXT }}>· {item}</p>
+                        <p key={i} className="text-xs leading-snug" style={{ color: TEXT }}>· {item}</p>
                       ))}
                     </div>
                   </div>
@@ -2669,7 +2675,7 @@ function CardPreview({
           <div className="space-y-3">
             <GoldrattDoNotGrid />
             <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#92400E' }}>Почему это опасно</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#92400E' }}>Почему это опасно</p>
               <p className="mt-1 text-sm leading-snug" style={{ color: '#78350F' }}>
                 Если ограничение сидит в фокусе собственника и несобранной системе продаж, новый продукт, канал или найм только увеличат число незавершённых задач. Бизнес станет активнее, но поток денег почти не ускорится.
               </p>
@@ -2681,7 +2687,7 @@ function CardPreview({
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {['P&L / финансы', 'CRM / воронка продаж', 'Список проектов', 'Описание процесса', 'Оргструктура / роли', 'Загрузка команды'].map((item) => (
-                <span key={item} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT, color: TEXT2 }}>
+                <span key={item} className="rounded-full border px-2.5 py-1 text-xs font-semibold" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT, color: TEXT2 }}>
                   {item}
                 </span>
               ))}
@@ -2703,7 +2709,7 @@ function CardPreview({
 function MetricChip({ label, value, tone = 'slate' }: { label: string; value: string; tone?: Tone }) {
   return (
     <div className="rounded-2xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{label}</p>
       <p className="mt-0.5 text-[0.92rem] font-semibold leading-snug" style={{ color: tone === 'slate' ? TEXT : TONES[tone].text }}>{value}</p>
     </div>
   )
@@ -2714,7 +2720,7 @@ function NumberedPreview({ items }: { items: string[] }) {
     <div className="space-y-2">
       {items.length > 0 ? items.map((item, index) => (
         <div key={`${item}-${index}`} className="flex gap-3 rounded-2xl border p-3" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: '#EEF2FF', color: '#3730A3' }}>
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: '#EEF2FF', color: '#3730A3' }}>
             {index + 1}
           </span>
           <p className="text-sm leading-snug" style={{ color: TEXT }}>{item}</p>
@@ -2757,7 +2763,7 @@ function ScenarioPlanPanel() {
         <div className="space-y-1.5">
           {plan.map((step) => (
             <div key={step.window} className="grid gap-1.5 rounded-2xl border px-3 py-2.5 sm:grid-cols-[68px_1fr]" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
-              <span className="inline-flex h-6 w-fit items-center justify-center rounded-full px-2.5 text-[10px] font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>
+              <span className="inline-flex h-6 w-fit items-center justify-center rounded-full px-2.5 text-xs font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>
                 {step.window}
               </span>
               <p className="text-[0.9rem] leading-[1.5]" style={{ color: '#334155' }}>{step.action}</p>
@@ -2799,15 +2805,15 @@ function LimitationsPanel({ sourceWarning }: { sourceWarning?: string }) {
   return (
     <div className="space-y-3">
       <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем точно</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем точно</p>
         <BulletPreview items={exact} />
       </div>
       <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения сейчас опасны</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения сейчас опасны</p>
         <BulletPreview items={missing} />
       </div>
       <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
         <BulletPreview items={next.slice(0, 3)} />
       </div>
     </div>
@@ -2851,7 +2857,7 @@ function FlowPipelineChart({ stages }: { stages: Array<{ label: string; isBottle
             )}
           </div>
           {index < displayStages.length - 1 && (
-            <span className="shrink-0 text-[10px]" style={{ color: TEXT3 }}>→</span>
+            <span className="shrink-0 text-xs" style={{ color: TEXT3 }}>→</span>
           )}
         </div>
       ))}
@@ -2881,7 +2887,7 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
       <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: activeStage?.isBottleneck ? '#FECACA' : BORDER_SOFT, background: activeStage?.isBottleneck ? '#FFF7F7' : '#F8FAFC' }}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: activeStage?.isBottleneck ? '#DC2626' : TEXT3 }}>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: activeStage?.isBottleneck ? '#DC2626' : TEXT3 }}>
               {activeStage?.isBottleneck ? 'Ограничение потока' : 'Активный этап'}
             </p>
             <p className="mt-1 text-sm font-semibold" style={{ color: TEXT }}>{activeStage?.label}</p>
@@ -2937,7 +2943,7 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
                         Ограничение
                       </span>
                     )}
-                    <span className="text-[10px] font-semibold leading-tight" style={{ color: stage.isBottleneck ? '#B91C1C' : isActive ? PRIMARY_BLUE : TEXT }}>
+                    <span className="text-xs font-semibold leading-tight" style={{ color: stage.isBottleneck ? '#B91C1C' : isActive ? PRIMARY_BLUE : TEXT }}>
                       {stage.label}
                     </span>
                     <span className="mt-0.5 text-[8.5px] font-medium" style={{ color: stage.isBottleneck ? '#B91C1C' : TEXT3 }}>
@@ -2945,7 +2951,7 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
                     </span>
                   </button>
                   {index < stages.length - 1 && (
-                    <span className="shrink-0 text-[10px]" style={{ color: TEXT3 }}>→</span>
+                    <span className="shrink-0 text-xs" style={{ color: TEXT3 }}>→</span>
                   )}
                 </div>
               )
@@ -2953,7 +2959,7 @@ function DetailedFlowChart({ stages }: { stages: GoldrattFlowStageDetail[] }) {
           </div>
 
           <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: BORDER_SOFT }}>
-            <table className="w-full min-w-[620px] border-collapse text-[10px]">
+            <table className="w-full min-w-[620px] border-collapse text-xs">
               <thead>
                 <tr style={{ background: '#F8FAFC' }}>
                   <td className="sticky left-0 z-10 border-b border-r px-2 py-1.5 font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT3, background: '#F8FAFC' }}>Этап</td>
@@ -3123,8 +3129,8 @@ function GoldrattTrendChart({ data }: { data: GoldrattTrendPoint[] }) {
           </g>
         </svg>
       </div>
-      <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>{trendNote}</p>
-      <div className="flex flex-wrap gap-2.5 text-[10px]" style={{ color: TEXT3 }}>
+      <p className="text-xs leading-relaxed" style={{ color: TEXT2 }}>{trendNote}</p>
+      <div className="flex flex-wrap gap-2.5 text-xs" style={{ color: TEXT3 }}>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-blue-500" />Лиды</span>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-emerald-500" />Обработано за 2 ч</span>
         <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-3 rounded-full bg-amber-500" />Оплаты</span>
@@ -3146,16 +3152,16 @@ void GOLDRATT_LEGACY_DEV_COMPONENTS
 function GoldrattConstraintPreview({ facts }: { facts: GoldrattFacts }) {
   void facts
   const items = [
-    ['Вход', 'заявки просели'],
-    ['Узел', 'продажи завязаны на собственнике'],
-    ['Выход', 'маржа ниже цели'],
+    ['Симптом', 'заявки просели'],
+    ['Ограничение', 'продажи завязаны на собственнике'],
+    ['Последствие', 'маржа ниже цели'],
   ] as const
 
   return (
-    <div className="mt-2 grid gap-2 text-[11px] sm:grid-cols-3">
+    <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
       {items.map(([label, value]) => (
         <div key={label} className="rounded-2xl border px-2.5 py-2" style={{ borderColor: BORDER_SOFT, background: '#FBFCFE' }}>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#64748B' }}>{label}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#64748B' }}>{label}</p>
           <p className="mt-1 text-xs font-medium leading-snug" style={{ color: TEXT }}>{value}</p>
         </div>
       ))}
@@ -3171,7 +3177,7 @@ function GoldrattDoNotGrid() {
   ]
 
   return (
-    <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3">
+    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
       {items.map(([title, text]) => (
         <div key={title} className="rounded-2xl border px-2.5 py-2" style={{ borderColor: BORDER_SOFT, background: '#FFF9ED' }}>
           <p className="font-semibold" style={{ color: '#9A3412' }}>{title}</p>
@@ -3227,7 +3233,7 @@ function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
     <div className="grid gap-3 lg:grid-cols-3">
       {steps.map((step) => (
         <div key={step.window} className="rounded-3xl border p-3.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-          <span className="mb-2.5 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: step.color, color: step.textColor }}>
+          <span className="mb-2.5 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: step.color, color: step.textColor }}>
             {step.window}
           </span>
           <p className="mb-3 text-sm leading-relaxed" style={{ color: TEXT2 }}>
@@ -3273,15 +3279,15 @@ function GoldrattLimitationsPanel({ facts }: { facts: GoldrattFacts }) {
   return (
     <div className="space-y-3">
       <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем достоверно</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем достоверно</p>
         <BulletPreview items={exact} />
       </div>
       <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения опасны без проверки</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения опасны без проверки</p>
         <BulletPreview items={missing} />
       </div>
       <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
         <BulletPreview items={next.slice(0, 3)} />
       </div>
     </div>
@@ -3340,11 +3346,11 @@ function goldrattActionContent(card: DetailCard): { title: string; main: string;
   switch (card.id) {
     case 'constraint':
       return {
-        title: 'Что делать первым',
+        title: 'Что это значит',
         main: card.kicker && card.kicker !== 'Что ограничивает результат'
           ? card.kicker
           : 'Снять ограничение прежде, чем усиливать продажи',
-        text: card.actionText ?? 'Выбрать один денежный поток на 30 дней и подчинить ему контент, продажи, продукт и командные задачи. Усиление маркетинга до снятия ограничения добавит незавершённой работы, а не денег.',
+        text: card.detailLead ?? card.support ?? 'Главное ограничение тормозит рост результата сильнее, чем любая другая проблема. Пока оно не снято, оптимизация остального только добавляет нагрузку.',
         tone: 'red',
       }
     default:
@@ -3408,7 +3414,7 @@ function DashboardCards({
                 <div className="mb-2.5 flex items-start gap-3">
                   <IconBadge icon={card.icon} tone={card.tone} />
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
                     <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
                   </div>
                 </div>
@@ -3469,7 +3475,7 @@ function DashboardCards({
             <div className="flex items-start gap-3">
               <IconBadge icon={card.icon} tone={card.tone} />
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
                 <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
               </div>
             </div>
@@ -3492,7 +3498,7 @@ function DashboardCards({
             <CardPreview card={card} agentType={agentType} pnlFacts={pnlFacts} goldrattFacts={goldrattFacts} accent={accent} />
           </div>
           <div className="mt-2 flex items-center justify-between gap-3 pt-1.5">
-            <p className="text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
+            <p className="text-xs leading-relaxed" style={{ color: TEXT2 }}>
               {card.statusLabel}
             </p>
             <button
@@ -3535,7 +3541,7 @@ function GoldrattInfoBlock({ facts }: { facts: GoldrattFacts | null }) {
           { label: 'Уровень уверенности', value: `${facts?.confidenceLabel ?? 'средний'}: вывод основан на контексте, а не на полной CRM-карте процесса.`, tone: 'slate' as Tone },
         ].map((item) => (
           <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>{item.label}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>{item.label}</p>
             <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>{item.value}</p>
           </div>
         ))}
@@ -3587,7 +3593,7 @@ function GoldrattDashboard({
                 <div className="flex items-start gap-3">
                   <IconBadge icon={card.icon} tone={card.tone} />
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
                     <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
                   </div>
                 </div>
@@ -3638,7 +3644,7 @@ function GoldrattDashboard({
               <div className="flex items-start gap-3">
                 <IconBadge icon={card.icon} tone={card.tone} />
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{card.kicker}</p>
                   <h3 className="mt-1 text-base font-semibold" style={{ color: TEXT }}>{card.title}</h3>
                 </div>
               </div>
@@ -3745,7 +3751,7 @@ function DetailVisual({
             <MetricChip label="Порог" value={formatCurrency(pnlFacts.breakevenRevenue, true)} tone="slate" />
           </div>
           <ExpensePreview items={pnlFacts.expenseBreakdown} />
-          <p className="text-[11px] leading-relaxed" style={{ color: TEXT3 }}>
+          <p className="text-xs leading-relaxed" style={{ color: TEXT3 }}>
             Проценты рассчитаны от средней выручки, а не от суммы расходов. Поэтому сумма может быть больше или меньше 100% — это нагрузка на оборот, а не структура pie chart.
           </p>
         </div>
@@ -3852,7 +3858,7 @@ function DetailVisual({
             </div>
             {goldrattFacts.evidenceItems.length > 0 && (
               <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Главные доказательства</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Главные доказательства</p>
                 <NumberedPreview items={goldrattFacts.evidenceItems.slice(0, 4)} />
               </div>
             )}
@@ -3862,7 +3868,7 @@ function DetailVisual({
         return (
           <div className="space-y-3">
             <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Этапы процесса</p>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Этапы процесса</p>
               <FlowPipelineChart stages={goldrattFacts.flowStages} />
             </div>
             <div className="rounded-3xl border p-4 text-sm leading-relaxed" style={{ borderColor: BORDER, background: '#FBFCFE', color: TEXT2 }}>
@@ -3873,7 +3879,7 @@ function DetailVisual({
       case 'evidence':
         return (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Доказательства ограничения</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Доказательства ограничения</p>
             <NumberedPreview items={goldrattFacts.evidenceItems.length > 0 ? goldrattFacts.evidenceItems : [
               'Перед этапом скопилась очередь — входы ждут более 2 дней.',
               'После этапа — ожидание: следующие шаги простаивают.',
@@ -3885,7 +3891,7 @@ function DetailVisual({
       case 'amplifiers':
         return (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Что усиливает узкое место</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>Что усиливает узкое место</p>
             <BulletPreview items={goldrattFacts.amplifiers.length > 0 ? goldrattFacts.amplifiers : [
               'Ручная работа без предварительного фильтра.',
               'Переключения между несколькими задачами.',
@@ -3897,7 +3903,7 @@ function DetailVisual({
       case 'donot':
         return (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Не делать сейчас</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Не делать сейчас</p>
             <BulletPreview items={goldrattFacts.doNotOptimize.length > 0 ? goldrattFacts.doNotOptimize : [
               'Не покупать больше лидов и заявок.',
               'Не нанимать людей без изменения процесса.',
@@ -3909,7 +3915,7 @@ function DetailVisual({
       case 'exploit':
         return (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Как использовать ограничение</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Как использовать ограничение</p>
             <NumberedPreview items={goldrattFacts.exploitActions.length > 0 ? goldrattFacts.exploitActions : [
               'Ввести чек-лист входной заявки.',
               'Настроить предфильтр: неподходящие не доходят до ключевого этапа.',
@@ -3921,7 +3927,7 @@ function DetailVisual({
       case 'elevate':
         return (
           <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Как расширить ограничение</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Как расширить ограничение</p>
             <BulletPreview items={goldrattFacts.elevateActions.length > 0 ? goldrattFacts.elevateActions : [
               'Выделить ассистента для первичного скрининга.',
               'Автоматизировать часть разбора с помощью AI.',
@@ -4220,12 +4226,12 @@ function SourceTableBlockV2({
                   <Info className="h-3 w-3" />
                 </button>
               </div>
-              <span className="text-[10px]" style={{ color: TEXT3 }}>пригодность данных для анализа</span>
+              <span className="text-xs" style={{ color: TEXT3 }}>пригодность данных для анализа</span>
             </div>
           )}
         </div>
         {score && showScoreInfo && (
-          <div className="mt-3 rounded-2xl border px-3 py-2.5 text-[11px] leading-relaxed" style={{ background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}>
+          <div className="mt-3 rounded-2xl border px-3 py-2.5 text-xs leading-relaxed" style={{ background: '#EFF6FF', borderColor: '#BFDBFE', color: '#1E40AF' }}>
             <span className="font-semibold">Оценка качества — это не оценка бизнеса.</span> Алгоритм проверяет, пригодна ли таблица для разбора: найдены ли выручка, расходы, прибыль, периоды, ненулевые значения и достаточный объём данных.{' '}
             <span className="font-semibold">{score}/100</span> — данных достаточно для управленческого анализа. Без разбивки по направлениям, трафика и расшифровки ключевых расходов часть выводов остаётся предварительной.
           </div>
@@ -4385,14 +4391,24 @@ export default function ReportDisplay({
         {data.agentType === 'pnl' ? (
           <>
             <IntroBlockV2 agentType={data.agentType} />
-            <DashboardCards
-              cards={cards}
-              agentType={data.agentType}
-              pnlFacts={pnlFacts}
-              goldrattFacts={goldrattFacts}
-              accent={meta.accent}
-              onOpen={setOpenCardId}
-            />
+            {pnlFacts && !pnlFacts.avgRevenue && !pnlFacts.avgCosts && !pnlFacts.avgProfit ? (
+              <div className="mb-6 rounded-2xl border px-5 py-4" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+                <p className="text-sm font-semibold" style={{ color: '#92400E' }}>Не удалось распознать финансовые данные</p>
+                <p className="mt-1 text-sm leading-relaxed" style={{ color: '#78350F' }}>
+                  Система не нашла строки с выручкой, расходами и прибылью. Возможно, лист выбран неправильно или формат таблицы нестандартный.
+                  Вернитесь к загрузке файла и выберите нужный лист с P&L.
+                </p>
+              </div>
+            ) : (
+              <DashboardCards
+                cards={cards}
+                agentType={data.agentType}
+                pnlFacts={pnlFacts}
+                goldrattFacts={goldrattFacts}
+                accent={meta.accent}
+                onOpen={setOpenCardId}
+              />
+            )}
           </>
         ) : (
           <>
@@ -4415,13 +4431,13 @@ export default function ReportDisplay({
         )}
         {data.agentType === 'goldratt' && goldrattFacts && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-            <p className="max-w-2xl text-[11px] leading-relaxed" style={{ color: TEXT2 }}>
+            <p className="max-w-2xl text-xs leading-relaxed" style={{ color: TEXT2 }}>
               <span className="font-semibold" style={{ color: TEXT }}>Уверенность: {goldrattFacts.confidenceLabel}.</span>{' '}
               {goldrattFacts.confidenceNote}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {['P&L', 'CRM / воронка', 'Список проектов', 'Роли', 'Загрузка команды'].map((item) => (
-                <span key={item} className="rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={{ background: CARD, borderColor: BORDER_SOFT, color: TEXT3 }}>
+                <span key={item} className="rounded-full border px-2 py-0.5 text-xs font-semibold" style={{ background: CARD, borderColor: BORDER_SOFT, color: TEXT3 }}>
                   {item}
                 </span>
               ))}
