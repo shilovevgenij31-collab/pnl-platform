@@ -276,6 +276,84 @@ assert(missingSeries.length === 0, 'missing row → empty series', missingSeries
 const avgMissing = avgFromSeries(missingSeries)
 assert(avgMissing === null, 'avgFromSeries([]) = null', avgMissing, null)
 
+// ─── Structure E: Wide table 2022-2026 (stress test — label cols preserved, recent years not cut) ──
+// Uses simple column headers "январь 2022", "февраль 2022" ... "март 2026" (15 groups total).
+// Verifies: all 15 groups detected, 2026 data present, 2022 data present, label col preserved.
+
+console.log('\n=== Structure E: Wide table 2022–2026 (stress test) ===')
+const yearsE = [2022, 2023, 2024, 2025, 2026]
+const monthNamesE = ['январь', 'февраль', 'март']
+
+const headerE = ['Статья']
+const revenueE = ['Выручка']
+const expenseE = ['Расходы']
+const profitE = ['Чистая прибыль']
+
+for (const year of yearsE) {
+  for (let mi = 0; mi < monthNamesE.length; mi++) {
+    headerE.push(`${monthNamesE[mi]} ${year}`)
+    const rev = year * 1000 + mi * 100  // unique per year-month, e.g. 2026000, 2026100, 2026200
+    revenueE.push(String(rev))
+    expenseE.push(String(Math.round(rev * 0.7)))
+    profitE.push(String(Math.round(rev * 0.3)))
+  }
+}
+
+const structE = [headerE, revenueE, expenseE, profitE]
+
+const groupsE = detectMonthGroups(structE)
+// Should detect 3 months × 5 years = 15 groups
+assert(groupsE.length === 15, 'E: 15 month groups (3 months × 5 years)', groupsE.length, 15)
+
+const revenueRowE = findRow(structE, ['выручка'])
+assert(revenueRowE !== null, 'E: revenue row found', revenueRowE, 'not null')
+
+const revenueSeriesE = parseSeriesFromGroups(revenueRowE, groupsE)
+assert(revenueSeriesE.length === 15, 'E: 15 revenue values extracted', revenueSeriesE.length, 15)
+
+// 2026 Jan (group index 12) = 2026*1000 + 0 = 2026000
+assert(revenueSeriesE[12] === 2026000, 'E: 2026-Jan revenue = 2026000', revenueSeriesE[12], 2026000)
+// 2026 Feb (group index 13) = 2026000 + 100 = 2026100
+assert(revenueSeriesE[13] === 2026100, 'E: 2026-Feb revenue = 2026100', revenueSeriesE[13], 2026100)
+// 2022 Jan (group index 0) = 2022000
+assert(revenueSeriesE[0] === 2022000, 'E: 2022-Jan revenue = 2022000', revenueSeriesE[0], 2022000)
+
+// Profit series
+const profitRowE = findRow(structE, ['прибыль'])
+const profitSeriesE = parseSeriesFromGroups(profitRowE, groupsE)
+assert(profitSeriesE.length === 15, 'E: 15 profit values', profitSeriesE.length, 15)
+assert(profitSeriesE.every(v => v > 0), 'E: all groups profitable', profitSeriesE, 'all > 0')
+
+// All groups have a totalIndex (no truncation mid-row)
+const allHaveTotal = groupsE.every(g => g.totalIndex > 0)
+assert(allHaveTotal, 'E: every group has a totalIndex (no truncation)', allHaveTotal, true)
+
+// Label column (col 0) preserved
+assert(revenueRowE?.[0] === 'Выручка', 'E: label col[0] preserved', revenueRowE?.[0], 'Выручка')
+
+// ─── Structure F: Multi-year annual table (2022-2026 as columns, no monthly sub-cols) ──
+
+console.log('\n=== Structure F: Annual totals 2022–2026 (year columns) ===')
+const structF = [
+  ['Статья', '2022', '2023', '2024', '2025', '2026'],
+  ['Выручка', '10000000', '12000000', '14500000', '16000000', '18000000'],
+  ['Расходы', '8000000', '9500000', '11000000', '12500000', '14000000'],
+  ['Прибыль', '2000000', '2500000', '3500000', '3500000', '4000000'],
+]
+const groupsF = detectMonthGroups(structF)
+// Year columns match PERIOD_CELL_RE (/20\d{2}/)
+assert(groupsF.length === 5, 'F: 5 year groups detected (2022–2026)', groupsF.length, 5)
+assert(groupsF[4].label === '2026', 'F: last group is 2026', groupsF[4].label, '2026')
+
+const revenueRowF = findRow(structF, ['выручка'])
+const revenueSeriesF = parseSeriesFromGroups(revenueRowF, groupsF)
+assert(revenueSeriesF.length === 5, 'F: 5 revenue values', revenueSeriesF.length, 5)
+assert(revenueSeriesF[4] === 18000000, 'F: 2026 revenue = 18 000 000', revenueSeriesF[4], 18000000)
+assert(revenueSeriesF[0] === 10000000, 'F: 2022 revenue = 10 000 000', revenueSeriesF[0], 10000000)
+
+const avgRevF = avgFromSeries(revenueSeriesF)
+assert(avgRevF === Math.round((10000000+12000000+14500000+16000000+18000000)/5), 'F: avgRevenue correct', avgRevF, Math.round((10000000+12000000+14500000+16000000+18000000)/5))
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`)
