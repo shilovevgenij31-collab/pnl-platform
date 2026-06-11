@@ -1871,25 +1871,6 @@ function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
   )
 }
 
-function DemoBanner() {
-  return (
-    <div className="print:hidden" style={{ background: '#F8FAFC', borderBottom: `1px solid ${BORDER}` }}>
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-1.5 sm:px-6">
-        <p className="text-xs" style={{ color: TEXT3 }}>
-          Демо-отчёт — пример управленческого отчёта без AI-вызова
-        </p>
-        <Link
-          href="/analyze"
-          className="text-xs font-medium transition-colors hover:underline"
-          style={{ color: TEXT2 }}
-        >
-          Сделать свой анализ →
-        </Link>
-      </div>
-    </div>
-  )
-}
-
 function Header({
   data,
   modelLabel,
@@ -1912,98 +1893,61 @@ function Header({
 
   return (
     <>
-      {isDemo && <DemoBanner />}
-      <nav className="sticky top-0 z-40 border-b print:hidden" style={{ background: 'rgba(255,255,255,0.94)', borderColor: BORDER, backdropFilter: 'blur(14px)' }}>
-        <div className="mx-auto flex min-h-12 max-w-7xl flex-wrap items-center gap-2 px-4 py-2 sm:px-6">
-          <Link href="/analyze" className="mr-auto inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
+      <nav className="sticky top-0 z-40 border-b print:hidden" style={{ background: 'rgba(255,255,255,0.95)', borderColor: BORDER, backdropFilter: 'blur(14px)' }}>
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-1 px-4 sm:px-6">
+          <Link href="/analyze" className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
             <ArrowLeft className="h-4 w-4" />
             Новый анализ
           </Link>
-          <button onClick={onCopyLink} className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
+          <button onClick={onCopyLink} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
             {copiedLink ? <Check className="h-4 w-4 text-emerald-500" /> : <Link2 className="h-4 w-4" />}
-            <span className="hidden sm:inline">{copiedLink ? 'Ссылка скопирована' : 'Скопировать ссылку'}</span>
-            <span className="sm:hidden">Ссылка</span>
+            <span className="hidden sm:inline">{copiedLink ? 'Скопировано' : 'Ссылка'}</span>
           </button>
-          <button onClick={onCopyReport} className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
+          <button onClick={onCopyReport} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
             {copiedReport ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-            <span className="hidden sm:inline">{copiedReport ? 'Отчёт скопирован' : 'Скопировать отчёт'}</span>
-            <span className="sm:hidden">Отчёт</span>
+            <span className="hidden sm:inline">{copiedReport ? 'Скопировано' : 'Отчёт'}</span>
           </button>
-          <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
+          <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-slate-50" style={{ color: TEXT2 }}>
             <Printer className="h-4 w-4" />
-            PDF
+            <span className="hidden sm:inline">PDF</span>
           </button>
         </div>
       </nav>
 
-      <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 print:px-0">
-      <header className="mb-0 overflow-hidden rounded-3xl border print:border-none" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 12px 32px rgba(15, 23, 42, 0.07)' }}>
-        <div className="p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ background: meta.accentBg, borderColor: meta.accentBorder, color: meta.badgeText }}>
-                  <Icon className="h-3.5 w-3.5" />
-                  {meta.badge}
-                </span>
-                {data.agentType === 'goldratt'
-                  ? <StatusPill tone="indigo">Диагностика ТОС</StatusPill>
-                  : <StatusPill tone="blue">Управленческий P&L</StatusPill>
-                }
-              </div>
-
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl" style={{ color: TEXT }}>
-                {meta.title}: {data.company}
-              </h1>
-              <p className="mt-1.5 max-w-3xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
-                {meta.subtitle}
-              </p>
-              <p className="mt-1 text-xs" style={{ color: TEXT3 }}>
-                Разработано в AdAgency
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-3 text-sm" style={{ color: TEXT2 }}>
-                <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4" />
-                  {data.company}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4" />
-                  {data.date}
-                </span>
-                {isDemo ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: TEXT3 }}>
-                    Демо-отчёт
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: TEXT3 }}>
-                    Модель: {modelLabel}
-                  </span>
-                )}
-              </div>
+      <div className="mx-auto max-w-7xl px-4 pt-5 sm:px-6 print:px-0">
+        <header className="overflow-hidden rounded-2xl border print:border-none" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 8px rgba(15, 23, 42, 0.05)' }}>
+          <div className="p-6 sm:p-8 print:p-4">
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium" style={{ background: meta.accentBg, borderColor: meta.accentBorder, color: meta.badgeText }}>
+                <Icon className="h-3 w-3" />
+                {meta.badge}
+              </span>
+              {isDemo && <span className="text-xs" style={{ color: TEXT3 }}>· Демо-отчёт</span>}
             </div>
 
-            <div className="hidden lg:flex items-center gap-2 print:hidden">
-              <button onClick={onCopyLink} className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
-                {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Link2 className="h-3.5 w-3.5" />}
-                {copiedLink ? 'Скопировано' : 'Ссылка'}
-              </button>
-              <button onClick={onCopyReport} className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
-                {copiedReport ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {copiedReport ? 'Скопировано' : 'Отчёт'}
-              </button>
-              <button onClick={() => window.print()} className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-50" style={{ borderColor: BORDER, color: TEXT2 }}>
-                <Printer className="h-3.5 w-3.5" />
-                PDF
-              </button>
-              <Link href="/analyze" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ background: meta.accent }}>
-                <ArrowRight className="h-3.5 w-3.5" />
-                Новый анализ
-              </Link>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl" style={{ color: TEXT }}>
+              {meta.title}: {data.company}
+            </h1>
+            <p className="mt-2 max-w-3xl text-base leading-relaxed" style={{ color: TEXT2 }}>
+              {meta.subtitle}
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" style={{ color: TEXT3 }}>
+              <span className="inline-flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5" />
+                {data.company}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
+                {data.date}
+              </span>
+              <span>Разработано в AdAgency</span>
+              {!isDemo && modelLabel && (
+                <span className="text-xs">Модель: {modelLabel}</span>
+              )}
             </div>
           </div>
-        </div>
-      </header>
+        </header>
       </div>
     </>
   )
@@ -2070,22 +2014,22 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
       { label: 'Что делаем', value: 'Не оптимизируем всё подряд, а сначала снимаем главное ограничение.', tone: 'green' },
     ]
     return (
-      <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
-        <div className="mb-3 flex items-start gap-2">
-          <Target className="mt-0.5 h-4.5 w-4.5 shrink-0" style={{ color: INDIGO }} />
+      <section className="mb-6 rounded-2xl border p-5 sm:p-6" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}>
+        <div className="mb-4 flex items-start gap-3">
+          <Target className="mt-0.5 h-4 w-4 shrink-0" style={{ color: INDIGO }} />
           <div>
-            <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
+            <h2 className="text-base font-semibold" style={{ color: TEXT }}>
               Что такое бутылочное горлышко
             </h2>
-            <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+            <p className="mt-1.5 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
               Бутылочное горлышко — это главное ограничение системы: этап, ресурс, человек, правило или процесс, который сильнее всего ограничивает общий результат. По теории ограничений Голдратта не нужно улучшать всё сразу. Если улучшать не ограничение, система может стать «занятее», но итоговый результат почти не вырастет. Сначала нужно найти ограничение, максимально использовать его, подчинить ему остальные процессы, расширить его мощность и затем искать следующее.
             </p>
           </div>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {tocItems.map((item) => (
-            <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
+            <div key={item.label} className="rounded-xl border px-4 py-3" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+              <p className="text-xs font-medium" style={{ color: TONES[item.tone].text }}>
                 {item.label}
               </p>
               <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
@@ -2099,22 +2043,22 @@ function IntroBlockV2({ agentType }: { agentType: ReportPageData['agentType'] })
   }
 
   return (
-    <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
-      <div className="mb-3 flex items-center gap-2">
-        <Info className="h-4.5 w-4.5" style={{ color: PRIMARY_BLUE }} />
+    <section className="mb-6 rounded-2xl border p-5 sm:p-6" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}>
+      <div className="mb-4 flex items-start gap-3">
+        <Info className="mt-0.5 h-4 w-4 shrink-0" style={{ color: PRIMARY_BLUE }} />
         <div>
-          <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
+          <h2 className="text-base font-semibold" style={{ color: TEXT }}>
             Что важно знать перед чтением
           </h2>
-          <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+          <p className="mt-1.5 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
             Отчёт построен по сводным P&L-данным. Он показывает динамику выручки, структуру расходов и зоны потерь прибыли, но не отвечает на все управленческие вопросы без дополнительных разрезов.
           </p>
         </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {items.map((item) => (
-          <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>
+          <div key={item.label} className="rounded-xl border px-4 py-3" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+            <p className="text-xs font-medium" style={{ color: TONES[item.tone].text }}>
               {item.label}
             </p>
             <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>
@@ -2465,23 +2409,23 @@ function BreakevenPreview({ current, breakeven, gap, targetRevenue, targetMargin
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-          <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Средняя выручка</p>
-          <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TEXT }}>{formatCurrency(current, true)}</p>
+          <p className="text-xs font-medium" style={{ color: TEXT3 }}>Средняя выручка</p>
+          <p className="mt-0.5 text-sm font-semibold leading-snug" style={{ color: TEXT }}>{formatCurrency(current, true)}</p>
         </div>
         <div className="rounded-xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-          <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Точка безубыточности</p>
-          <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TEXT }}>{formatCurrency(breakeven, true)}</p>
+          <p className="text-xs font-medium" style={{ color: TEXT3 }}>Точка безубыточности</p>
+          <p className="mt-0.5 text-sm font-semibold leading-snug" style={{ color: TEXT }}>{formatCurrency(breakeven, true)}</p>
         </div>
         {gap !== null && gap > 0 && (
           <div className="rounded-xl border px-2.5 py-1.5" style={{ background: TONES.red.bg, borderColor: TONES.red.border }}>
-            <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Не хватает</p>
-            <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TONES.red.text }}>{formatCurrency(gap, true)}/мес</p>
+            <p className="text-xs font-medium" style={{ color: TEXT3 }}>Не хватает</p>
+            <p className="mt-0.5 text-sm font-semibold leading-snug" style={{ color: TONES.red.text }}>{formatCurrency(gap, true)}/мес</p>
           </div>
         )}
         {targetRevenue != null && (
           <div className="rounded-xl border px-2.5 py-1.5" style={{ background: TONES.indigo.bg, borderColor: TONES.indigo.border }}>
-            <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>Цель ({targetMargin ?? 10}% маржи)</p>
-            <p className="mt-0.5 text-[0.82rem] font-semibold leading-snug" style={{ color: TONES.indigo.text }}>{formatCurrency(targetRevenue, true)}</p>
+            <p className="text-xs font-medium" style={{ color: TEXT3 }}>Цель ({targetMargin ?? 10}% маржи)</p>
+            <p className="mt-0.5 text-sm font-semibold leading-snug" style={{ color: TONES.indigo.text }}>{formatCurrency(targetRevenue, true)}</p>
           </div>
         )}
       </div>
@@ -2617,24 +2561,24 @@ function CardPreview({
               ))}
             </div>
             <div className="grid gap-3 lg:grid-cols-3">
-              <div className="rounded-2xl border p-3" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#166534' }}>Убрать лишнее с ограничения</p>
+              <div className="rounded-xl border p-4" style={{ borderColor: '#BBF7D0', background: '#F0FDF4' }}>
+                <p className="text-xs font-medium" style={{ color: '#166534' }}>Убрать лишнее с ограничения</p>
                 <BulletPreview items={goldrattFacts.exploitActions.length > 0 ? goldrattFacts.exploitActions.slice(0, 3) : [
                   'На ближайшие 30 дней убрать с собственника всё, что не двигает выбранный поток денег.',
                   'Не открывать новые гипотезы, пока непонятно, какое направление даёт деньги быстрее всего.',
                   'Время собственника — только на продажи, оффер и решения, которые дают поток денег.',
                 ]} />
               </div>
-              <div className="rounded-2xl border p-3" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#4338CA' }}>Выстроить систему вокруг него</p>
+              <div className="rounded-xl border p-4" style={{ borderColor: '#C7D2FE', background: '#EEF2FF' }}>
+                <p className="text-xs font-medium" style={{ color: '#4338CA' }}>Выстроить систему вокруг него</p>
                 <BulletPreview items={goldrattFacts.subordinateActions.length > 0 ? goldrattFacts.subordinateActions.slice(0, 3) : [
                   'Команда, контент, продукт и партнёрские решения — только под один выбранный приоритет.',
                   'Если задача не помогает выбранному направлению сделать продажу — она уходит в backlog.',
                   'Календарь собственника временно упростить вокруг одного денежного потока.',
                 ]} />
               </div>
-              <div className="rounded-2xl border p-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#1D4ED8' }}>Расширить только после выбора</p>
+              <div className="rounded-xl border p-4" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
+                <p className="text-xs font-medium" style={{ color: '#1D4ED8' }}>Расширить только после выбора</p>
                 <BulletPreview items={goldrattFacts.elevateActions.length > 0 ? goldrattFacts.elevateActions.slice(0, 3) : [
                   'После очистки фокуса — делегировать операционку, которая регулярно затягивает собственника.',
                   'Закрепить роли с партнёром: кто отвечает за продажи, кто за delivery.',
@@ -2707,9 +2651,9 @@ function CardPreview({
 
 function MetricChip({ label, value, tone = 'slate' }: { label: string; value: string; tone?: Tone }) {
   return (
-    <div className="rounded-2xl border px-2.5 py-1.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-      <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT3 }}>{label}</p>
-      <p className="mt-0.5 text-[0.92rem] font-semibold leading-snug" style={{ color: tone === 'slate' ? TEXT : TONES[tone].text }}>{value}</p>
+    <div className="rounded-xl border px-3 py-2" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+      <p className="text-xs font-medium" style={{ color: TEXT3 }}>{label}</p>
+      <p className="mt-0.5 text-sm font-semibold leading-snug" style={{ color: tone === 'slate' ? TEXT : TONES[tone].text }}>{value}</p>
     </div>
   )
 }
@@ -2756,28 +2700,28 @@ function ScenarioPlanPanel() {
   ]
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.76fr)]">
-      <div className="rounded-3xl border p-3.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <h3 className="mb-2.5 text-sm font-semibold" style={{ color: TEXT }}>План 7 / 14 / 30</h3>
-        <div className="space-y-1.5">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.76fr)]">
+      <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <h3 className="mb-3 text-sm font-semibold" style={{ color: TEXT }}>План 7 / 14 / 30</h3>
+        <div className="space-y-2">
           {plan.map((step) => (
-            <div key={step.window} className="grid gap-1.5 rounded-2xl border px-3 py-2.5 sm:grid-cols-[68px_1fr]" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
+            <div key={step.window} className="grid gap-2 rounded-xl border px-3 py-2.5 sm:grid-cols-[72px_1fr]" style={{ borderColor: BORDER_SOFT, background: '#FFFFFF' }}>
               <span className="inline-flex h-6 w-fit items-center justify-center rounded-full px-2.5 text-xs font-semibold" style={{ background: '#EEF2FF', color: '#4338CA' }}>
                 {step.window}
               </span>
-              <p className="text-[0.9rem] leading-[1.5]" style={{ color: '#334155' }}>{step.action}</p>
+              <p className="text-sm leading-relaxed" style={{ color: '#334155' }}>{step.action}</p>
             </div>
           ))}
         </div>
       </div>
-      <div className="rounded-3xl border p-3.5" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+      <div className="rounded-2xl border p-4" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
         <h3 className="text-sm font-semibold" style={{ color: '#92400E' }}>Какие решения сейчас опасны</h3>
-        <p className="mt-2 text-[0.88rem] leading-[1.5]" style={{ color: '#78350F' }}>
+        <p className="mt-2 text-sm leading-relaxed" style={{ color: '#78350F' }}>
           Сводный P&L показывает убыток, но не показывает, где именно он возникает. Без разбивки по направлениям легко ударить по прибыльным и не исправить убыточные.
         </p>
         <div className="mt-2.5 grid gap-1.5">
           {dangerous.map((item) => (
-            <div key={item} className="flex gap-2 text-[0.9rem] leading-snug" style={{ color: '#78350F' }}>
+            <div key={item} className="flex gap-2 text-sm leading-snug" style={{ color: '#78350F' }}>
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#F59E0B' }} />
               <span>{item}</span>
             </div>
@@ -2802,17 +2746,17 @@ function LimitationsPanel({ sourceWarning }: { sourceWarning?: string }) {
   ].filter(Boolean) as string[]
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем точно</p>
+    <div className="space-y-4">
+      <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide" style={{ color: PRIMARY_BLUE }}>Что считаем точно</p>
         <BulletPreview items={exact} />
       </div>
-      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения сейчас опасны</p>
+      <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#B45309' }}>Какие решения сейчас опасны</p>
         <BulletPreview items={missing} />
       </div>
-      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
+      <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
         <BulletPreview items={next.slice(0, 3)} />
       </div>
     </div>
@@ -3229,9 +3173,9 @@ function GoldrattActionPlanPanel({ facts }: { facts: GoldrattFacts }) {
   ]
 
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
+    <div className="grid gap-4 lg:grid-cols-3">
       {steps.map((step) => (
-        <div key={step.window} className="rounded-3xl border p-3.5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <div key={step.window} className="rounded-2xl border p-5" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
           <span className="mb-2.5 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: step.color, color: step.textColor }}>
             {step.window}
           </span>
@@ -3276,17 +3220,17 @@ function GoldrattLimitationsPanel({ facts }: { facts: GoldrattFacts }) {
   ]
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: PRIMARY_BLUE }}>Что считаем достоверно</p>
+    <div className="space-y-4">
+      <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide" style={{ color: PRIMARY_BLUE }}>Что считаем достоверно</p>
         <BulletPreview items={exact} />
       </div>
-      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#B45309' }}>Какие решения опасны без проверки</p>
+      <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#B45309' }}>Какие решения опасны без проверки</p>
         <BulletPreview items={missing} />
       </div>
-      <div className="rounded-3xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
+      <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: '#FBFCFE' }}>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide" style={{ color: '#475569' }}>Что нужно для точного анализа</p>
         <BulletPreview items={next.slice(0, 3)} />
       </div>
     </div>
@@ -3333,10 +3277,10 @@ function PnlActionCard({ card }: { card: DetailCard }) {
   if (!action) return null
   const colors = TONES[action.tone]
   return (
-    <aside className="flex h-full flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
-      <h3 className="text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
-      <p className="text-[1.05rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
-      <p className="flex-1 text-[0.94rem] leading-[1.62]" style={{ color: '#334155' }}>{action.text}</p>
+    <aside className="flex h-full flex-col gap-3 rounded-2xl border p-5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}>
+      <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>{action.title}</h3>
+      <p className="text-base font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
+      <p className="flex-1 text-sm leading-relaxed" style={{ color: '#334155' }}>{action.text}</p>
     </aside>
   )
 }
@@ -3360,10 +3304,10 @@ function GoldrattActionCard({ card }: { card: DetailCard }) {
   if (!action) return null
   const colors = TONES[action.tone]
   return (
-    <aside className="flex h-full flex-col gap-3 rounded-3xl border p-3.5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)' }}>
-      <h3 className="text-base font-semibold" style={{ color: TEXT }}>{action.title}</h3>
-      <p className="text-[1.02rem] font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
-      <p className="flex-1 text-[0.92rem] leading-[1.55]" style={{ color: '#334155' }}>{action.text}</p>
+    <aside className="flex h-full flex-col gap-3 rounded-2xl border p-5" style={{ background: '#FBFCFE', borderColor: colors.border, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}>
+      <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: TEXT3 }}>{action.title}</h3>
+      <p className="text-base font-semibold leading-snug" style={{ color: colors.text }}>{action.main}</p>
+      <p className="flex-1 text-sm leading-relaxed" style={{ color: '#334155' }}>{action.text}</p>
     </aside>
   )
 }
@@ -3392,21 +3336,21 @@ function DashboardCards({
 
   if (agentType === 'pnl') {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {cards.map((card) => {
           const hasRightCard = pnlActionContent(card) !== null
           return (
             <div
               key={card.id}
-              className={hasRightCard ? 'grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]' : ''}
+              className={hasRightCard ? 'grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]' : ''}
             >
               <article
                 role="button"
                 tabIndex={0}
                 onClick={() => onOpen(card.id)}
                 onKeyDown={(event) => openFromKeyboard(event, card.id)}
-                className="flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
-                style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
+                className="flex flex-col rounded-2xl border p-5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] focus:outline-none focus:ring-2 focus:ring-offset-2"
+                style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}
               >
                 <div className="mb-2.5 flex items-start gap-3">
                   <IconBadge icon={card.icon} tone={card.tone} />
@@ -3418,7 +3362,7 @@ function DashboardCards({
                 <div className="flex-1">
                   <div className="mb-2">
                     <p
-                      className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`}
+                      className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-3xl' : 'text-lg'}`}
                       style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
                     >
                       {card.value}
@@ -3455,7 +3399,7 @@ function DashboardCards({
   }
 
   return (
-    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {cards.map((card) => (
         <article
           key={card.id}
@@ -3463,10 +3407,10 @@ function DashboardCards({
           tabIndex={0}
           onClick={() => onOpen(card.id)}
           onKeyDown={(event) => openFromKeyboard(event, card.id)}
-          className={`flex flex-col self-start rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+          className={`flex flex-col self-start rounded-2xl border p-5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] focus:outline-none focus:ring-2 focus:ring-offset-2 ${
             card.featured ? 'md:col-span-2 xl:col-span-2' : ''
           }`}
-          style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
+          style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}
         >
           <div className="mb-2.5 flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -3481,7 +3425,7 @@ function DashboardCards({
           <div className={`flex-1 ${card.featured ? 'min-h-[104px]' : 'min-h-[88px]'}`}>
             <div className="mb-2">
               <p
-                className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`}
+                className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-3xl' : 'text-lg'}`}
                 style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}
               >
                 {card.value}
@@ -3519,26 +3463,26 @@ function DashboardCards({
 
 function GoldrattInfoBlock({ facts }: { facts: GoldrattFacts | null }) {
   return (
-    <section className="mb-4 rounded-3xl border p-3.5 sm:p-4" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}>
-      <div className="mb-3 flex items-start gap-2">
-        <Info className="mt-0.5 h-4.5 w-4.5 shrink-0" style={{ color: PRIMARY_BLUE }} />
+    <section className="mb-6 rounded-2xl border p-5 sm:p-6" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}>
+      <div className="mb-4 flex items-start gap-3">
+        <Info className="mt-0.5 h-4 w-4 shrink-0" style={{ color: PRIMARY_BLUE }} />
         <div>
-          <h2 className="text-sm font-semibold sm:text-base" style={{ color: TEXT }}>
+          <h2 className="text-base font-semibold" style={{ color: TEXT }}>
             Что важно знать перед чтением
           </h2>
-          <p className="mt-1 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
+          <p className="mt-1.5 max-w-5xl text-sm leading-relaxed" style={{ color: TEXT2 }}>
             Это не BI-отчёт по идеальной CRM. Разбор по Голдратту ищет одно главное ограничение системы: что сейчас сильнее всего мешает потоку денег расти быстрее.
           </p>
         </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         {[
           { label: 'Что известно', value: 'Контекст предпринимателя, описание ситуации и документы, если приложены.', tone: 'blue' as Tone },
           { label: 'Что ищем', value: 'Не список проблем, а одно ограничение, которому нужно подчинить решения.', tone: 'indigo' as Tone },
           { label: 'Уровень уверенности', value: `${facts?.confidenceLabel ?? 'средний'}: вывод основан на контексте, а не на полной CRM-карте процесса.`, tone: 'slate' as Tone },
         ].map((item) => (
-          <div key={item.label} className="rounded-2xl border px-3 py-2.5" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em]" style={{ color: TONES[item.tone].text }}>{item.label}</p>
+          <div key={item.label} className="rounded-xl border px-4 py-3" style={{ background: '#F8FAFC', borderColor: BORDER_SOFT }}>
+            <p className="text-xs font-medium" style={{ color: TONES[item.tone].text }}>{item.label}</p>
             <p className="mt-1 text-sm leading-snug" style={{ color: TEXT }}>{item.value}</p>
           </div>
         ))}
@@ -3569,7 +3513,7 @@ function GoldrattDashboard({
   const sequence = ['constraint', 'exploit', 'donot'] as const
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {sequence.map((id) => {
         const card = byId(id)
         if (!card) return null
@@ -3577,14 +3521,14 @@ function GoldrattDashboard({
 
         if (!isFullWidth) {
           return (
-          <div key={card.id} className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+          <div key={card.id} className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <article
               role="button"
               tabIndex={0}
               onClick={() => onOpen(card.id)}
               onKeyDown={(event) => openFromKeyboard(event, card.id)}
-              className="flex h-full flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
-              style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
+              className="flex h-full flex-col rounded-2xl border p-5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] focus:outline-none focus:ring-2 focus:ring-offset-2"
+              style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}
             >
               <div className="mb-2.5 flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
@@ -3598,7 +3542,7 @@ function GoldrattDashboard({
               </div>
               <div className="flex-1">
                 <div className="mb-2">
-                  <p className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-[1.7rem]' : 'text-[1.1rem]'}`} style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}>
+                  <p className={`font-semibold tracking-tight ${card.featured ? 'text-2xl sm:text-3xl' : 'text-lg'}`} style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}>
                     {card.value}
                   </p>
                   {card.support && <p className="mt-1 text-sm leading-snug" style={{ color: '#334155' }}>{card.support}</p>}
@@ -3634,8 +3578,8 @@ function GoldrattDashboard({
             tabIndex={0}
             onClick={() => onOpen(card.id)}
             onKeyDown={(event) => openFromKeyboard(event, card.id)}
-            className="flex flex-col rounded-3xl border p-3.5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-offset-2"
-            style={{ background: CARD, borderColor: BORDER, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.05)' }}
+            className="flex flex-col rounded-2xl border p-5 text-left transition-transform hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] focus:outline-none focus:ring-2 focus:ring-offset-2"
+            style={{ background: CARD, borderColor: BORDER, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)' }}
           >
             <div className="mb-2.5 flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -3649,7 +3593,7 @@ function GoldrattDashboard({
             </div>
             <div className="flex-1">
               <div className="mb-2">
-                <p className="text-[1.1rem] font-semibold tracking-tight" style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}>
+                <p className="text-lg font-semibold tracking-tight" style={{ color: card.tone === 'slate' ? TEXT : TONES[card.tone].text }}>
                   {card.value}
                 </p>
                 {card.support && <p className="mt-1 text-sm leading-snug" style={{ color: '#334155' }}>{card.support}</p>}
@@ -4015,22 +3959,22 @@ function DetailDrawer({
 function makeMarkdownComponents() {
   return {
     h2: ({ children }: { children?: ReactNode }) => (
-      <h2 className="mb-3 mt-8 text-[1.2rem] font-semibold tracking-tight first:mt-0" style={{ color: TEXT }}>
+      <h2 className="mb-3 mt-8 text-xl font-semibold tracking-tight first:mt-0" style={{ color: TEXT }}>
         {children}
       </h2>
     ),
     h3: ({ children }: { children?: ReactNode }) => (
-      <h3 className="mb-2.5 mt-6 text-[1.02rem] font-semibold tracking-tight" style={{ color: TEXT }}>
+      <h3 className="mb-2.5 mt-6 text-base font-semibold tracking-tight" style={{ color: TEXT }}>
         {children}
       </h3>
     ),
     h4: ({ children }: { children?: ReactNode }) => (
-      <h4 className="mb-2 mt-4 text-[0.95rem] font-semibold" style={{ color: TEXT }}>
+      <h4 className="mb-2 mt-4 text-sm font-semibold" style={{ color: TEXT }}>
         {children}
       </h4>
     ),
     p: ({ children }: { children?: ReactNode }) => (
-      <p className="mb-3 text-[0.98rem] leading-[1.72]" style={{ color: '#334155' }}>
+      <p className="mb-3 text-sm leading-relaxed" style={{ color: '#334155' }}>
         {children}
       </p>
     ),
@@ -4041,7 +3985,7 @@ function makeMarkdownComponents() {
       <ol className="mb-4 space-y-2.5 pl-0">{children}</ol>
     ),
     li: ({ children }: { children?: ReactNode }) => (
-      <li className="ml-0 flex gap-2.5 text-[0.97rem] leading-[1.68]" style={{ color: '#334155' }}>
+      <li className="ml-0 flex gap-2.5 text-sm leading-relaxed" style={{ color: '#334155' }}>
         <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#93C5FD' }} />
         <span>{children}</span>
       </li>
@@ -4053,12 +3997,12 @@ function makeMarkdownComponents() {
     ),
     thead: ({ children }: { children?: ReactNode }) => <thead style={{ background: '#F8FAFC' }}>{children}</thead>,
     th: ({ children }: { children?: ReactNode }) => (
-      <th className="border-b px-3.5 py-2.5 text-left text-[0.68rem] font-semibold uppercase tracking-[0.06em]" style={{ borderColor: BORDER, color: TEXT2 }}>
+      <th className="border-b px-3.5 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.05em]" style={{ borderColor: BORDER, color: TEXT2 }}>
         {children}
       </th>
     ),
     td: ({ children }: { children?: ReactNode }) => (
-      <td className="border-b px-3.5 py-2.5 align-top text-[0.84rem]" style={{ borderColor: BORDER_SOFT, color: '#334155' }}>
+      <td className="border-b px-3.5 py-2.5 align-top text-sm" style={{ borderColor: BORDER_SOFT, color: '#334155' }}>
         {children}
       </td>
     ),
@@ -4199,10 +4143,10 @@ function SourceTableBlockV2({
       <div className="border-b px-4 py-3 sm:px-5" style={{ borderColor: BORDER_SOFT }}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-3xl">
-            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
+            <p className="text-xs font-medium uppercase tracking-wide" style={{ color: TEXT3 }}>
               Проверка исходных данных
             </p>
-            <h2 className="mt-1 text-[0.98rem] font-semibold" style={{ color: TEXT }}>
+            <h2 className="mt-1 text-sm font-semibold" style={{ color: TEXT }}>
               Данные, использованные для анализа
             </h2>
             <p className="mt-1 text-sm leading-snug" style={{ color: TEXT2 }}>
@@ -4304,7 +4248,7 @@ function FullReportBlock({ report }: { report: string }) {
   return (
     <section className="rounded-3xl border p-5 sm:p-6" style={{ background: CARD, borderColor: BORDER, boxShadow: '0 14px 34px rgba(15, 23, 42, 0.06)' }}>
       <div className="mb-5 border-b pb-4" style={{ borderColor: BORDER_SOFT }}>
-        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: TEXT2 }}>
+        <p className="text-xs font-medium uppercase tracking-wide" style={{ color: TEXT3 }}>
           Исходный текст анализа
         </p>
         <h2 className="mt-1 text-lg font-semibold" style={{ color: TEXT }}>
@@ -4386,7 +4330,7 @@ export default function ReportDisplay({
         onCopyLink={handleCopyLink}
       />
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8 print:px-0 print:py-4">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10 print:px-0 print:py-4">
         {data.agentType === 'pnl' ? (
           <>
             <IntroBlockV2 agentType={data.agentType} />
